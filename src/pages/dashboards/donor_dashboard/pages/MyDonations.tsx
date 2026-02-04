@@ -14,7 +14,7 @@ import {
   Truck,
   AlertCircle
 } from 'lucide-react';
-import { jsPDF } from 'jspdf';
+import { generateAndOpenReceipt } from '../../../../utils/receiptGenerator';
 
 const MyDonations = () => {
   const { user } = useUser();
@@ -32,7 +32,9 @@ const MyDonations = () => {
                id: d._id,
                type: d.donationItem ? 'item' : 'monetary',
                amount: `₹${d.amount}`,
-               institute: 'KindHearts Foundation',
+               // If instituteName exists and is not empty, use it.
+               // If it's a general donation (no institute specific), use KindHearts Foundation.
+               institute: d.instituteName || 'KindHearts Foundation',
                cause: d.donationItem || 'General Fund',
                date: new Date(d.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
                status: d.status === 'completed' ? 'delivered' : d.status,
@@ -83,23 +85,16 @@ const MyDonations = () => {
     }
   };
 
-  const generateReceipt = (donation: any) => {
-    try {
-      const pdf = new jsPDF();
-      pdf.setFontSize(16);
-      pdf.text('Donation Receipt', 105, 20, { align: 'center' });
-      pdf.setFontSize(12);
-      pdf.text(`Donor: ${user?.fullName || 'Anonymous'}`, 20, 40);
-      pdf.text(`Institute: ${donation.institute}`, 20, 50);
-      pdf.text(`Cause: ${donation.cause}`, 20, 60);
-      pdf.text(`Amount: ${donation.amount}`, 20, 70);
-      pdf.text(`Date: ${donation.date}`, 20, 80);
-      pdf.text(`Status: ${getStatusText(donation.status)}`, 20, 90);
-      pdf.text(`Donation ID: ${donation.id}`, 20, 100);
-      pdf.save(`donation-receipt-${donation.id}.pdf`);
-    } catch (e) {
-      console.error('Failed to generate receipt:', e);
-    }
+  const handleGenerateReceipt = (donation: any) => {
+    generateAndOpenReceipt({
+      id: donation.id,
+      institute: donation.institute,
+      donorName: user?.fullName || 'Anonymous',
+      date: donation.date,
+      amount: donation.amount,
+      type: donation.type,
+      cause: donation.cause
+    });
   };
 
   return (
@@ -251,7 +246,7 @@ const MyDonations = () => {
                   </td>
                   <td className="px-6 py-4 text-right text-sm font-medium">
                     {donation.taxReceipt && (
-                      <button onClick={() => generateReceipt(donation)} className="text-rose-600 hover:text-rose-800 flex items-center justify-end space-x-1">
+                      <button onClick={() => handleGenerateReceipt(donation)} className="text-rose-600 hover:text-rose-800 flex items-center justify-end space-x-1">
                         <Download size={16} />
                         <span>Receipt</span>
                       </button>

@@ -25,7 +25,7 @@ import { useUser } from "@clerk/clerk-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "../components/Button";
 import Confetti from "react-confetti";
-import ReactDOMServer from "react-dom/server";
+import { generateAndOpenReceipt } from "../../../../utils/receiptGenerator";
 
 interface RecommendedInstitute {
   _id: string;
@@ -327,138 +327,16 @@ const BrowseDonate = () => {
       return;
     }
 
-    try {
-      // Create receipt content in HTML
-      const receiptContent = (
-        <div className="bg-white p-8 rounded-xl max-w-2xl mx-auto">
-          <div className="text-center mb-6">
-            <h1 className="text-2xl font-bold text-indigo-600">DonorConnect</h1>
-            <p className="text-gray-600">Donation Receipt</p>
-          </div>
-
-          <div className="mb-6">
-            <p className="font-medium">DonorConnect Foundation</p>
-            <div className="text-sm text-gray-600">
-              <p>123 Charity Lane</p>
-              <p>Mumbai, Maharashtra 400001</p>
-              <p>India</p>
-              <p>support@donorconnect.org</p>
-            </div>
-          </div>
-
-          <div className="border-t border-b border-gray-200 py-4 mb-6">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-gray-600">Receipt Number:</p>
-                <p className="font-medium">{currentDonation.paymentId}</p>
-              </div>
-              <div>
-                <p className="text-gray-600">Date:</p>
-                <p className="font-medium">
-                  {new Date().toLocaleDateString("en-IN", {
-                    day: "2-digit",
-                    month: "long",
-                    year: "numeric",
-                  })}
-                </p>
-              </div>
-              <div>
-                <p className="text-gray-600">Donor Name:</p>
-                <p className="font-medium">{user?.fullName || "Anonymous"}</p>
-              </div>
-              <div>
-                <p className="text-gray-600">Recipient Organization:</p>
-                <p className="font-medium">{currentDonation.institute}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="mb-6">
-            <h2 className="text-lg font-semibold mb-4">Donation Details</h2>
-            <div className="space-y-2">
-              {currentDonation.type === "monetary" ? (
-                <div className="flex justify-between py-2 border-b">
-                  <span>Charitable Donation</span>
-                  <span className="font-medium">
-                    ₹{currentDonation.amount.toLocaleString("en-IN")}
-                  </span>
-                </div>
-              ) : (
-                <>
-                  {currentDonation.resources?.map(
-                    (resource: any, index: number) => (
-                      <div
-                        key={index}
-                        className="flex justify-between py-2 border-b"
-                      >
-                        <span>{`${resource.name} x ${resource.quantity}`}</span>
-                        <span className="font-medium">
-                          ₹{resource.amount.toLocaleString("en-IN")}
-                        </span>
-                      </div>
-                    )
-                  )}
-                </>
-              )}
-              <div className="flex justify-between pt-4 font-semibold">
-                <span>Total Amount</span>
-                <span>
-                  ₹
-                  {(currentDonation.type === "monetary"
-                    ? currentDonation.amount
-                    : currentDonation.totalAmount
-                  ).toLocaleString("en-IN")}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="text-center text-sm text-gray-600 mt-8">
-            <p>
-              This receipt is computer generated and does not require a physical
-              signature.
-            </p>
-            <p className="mt-2">
-              Thank you for your generous donation. Your contribution will make
-              a meaningful impact.
-            </p>
-          </div>
-        </div>
-      );
-
-      // Create a new window and write the receipt content
-      const receiptWindow = window.open("", "_blank");
-      if (!receiptWindow) {
-        alert("Please allow popups for this website to view the receipt");
-        return;
-      }
-
-      receiptWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>Donation Receipt</title>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-          </head>
-          <body>
-            <div class="min-h-screen bg-gray-100 py-8">
-              ${ReactDOMServer.renderToString(receiptContent)}
-              <div class="text-center mt-8">
-                <button onclick="window.print()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
-                  Print Receipt
-                </button>
-              </div>
-            </div>
-          </body>
-        </html>
-      `);
-      receiptWindow.document.close();
-    } catch (error) {
-      console.error("Error generating receipt:", error);
-      alert("Failed to generate receipt. Please try again.");
-    }
+    generateAndOpenReceipt({
+      paymentId: currentDonation.paymentId,
+      institute: currentDonation.institute,
+      donorName: user?.fullName || "Anonymous",
+      date: new Date(),
+      amount: currentDonation.type === "monetary" ? currentDonation.amount : currentDonation.totalAmount,
+      type: currentDonation.type,
+      resources: currentDonation.resources,
+      totalAmount: currentDonation.totalAmount
+    });
   };
 
   const fetchRecommendations = async () => {
