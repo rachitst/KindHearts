@@ -81,7 +81,7 @@ declare global {
 
 const API_URL = import.meta.env.VITE_API_BASE_URL;
 
-const BrowseDonate = () => {
+const GeneralDonations = () => {
   const institutes = [
     {
       id: 1,
@@ -1164,4 +1164,4 @@ const BrowseDonate = () => {
   );
 };
 
-export default BrowseDonate;
+export default GeneralDonations;

@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
-import axios from 'axios';
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Search,
   Filter,
@@ -19,42 +18,37 @@ import {
   CheckCircle2,
   Sparkles,
   Star,
-  User,
-  BookOpen,
-  Utensils,
-  Shirt,
-  Stethoscope,
-  Download,
+  Download
 } from "lucide-react";
+import axios from "axios";
+import { useUser } from "@clerk/clerk-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "../components/Button";
 import Confetti from "react-confetti";
-import { motion, AnimatePresence } from "framer-motion";
-import html2canvas from "html2canvas";
-import { config } from "../../../../config/env";
-import { useUser } from "@clerk/clerk-react";
-import { jsPDF } from "jspdf";
+import ReactDOMServer from "react-dom/server";
 
-interface Need {
-  id: number;
+interface RecommendedInstitute {
+  _id: string;
   name: string;
-  amount: number;
-  type: "monetary" | "resource";
-}
-
-interface Institute {
-  id: number;
-  name: string;
+  email: string;
+  phone: string;
+  address: string;
+  description: string;
+  requirement?: string[];
   category: string;
-  description: string;
-  image: string;
-  needs: Need[];
+  itemName?: string;
+  quantity?: number;
+  urgency?: string;
+  beneficiaryCount?: number;
+  previousDonations?: boolean;
+  createdAt?: string;
 }
 
-interface DonationOption {
-  id: number;
-  amount: number;
-  label: string;
-  description: string;
+interface DonationCategory {
+  id: string;
+  name: string;
+  icon: React.ReactNode;
+  items: string[];
 }
 
 interface RazorpayOptions {
@@ -73,299 +67,167 @@ interface RazorpayOptions {
   };
 }
 
-interface Receipt {
-  institute: string;
-  amount: number;
-  date: string;
-  transactionId: string;
-  donationType: string;
-  paymentId: string;
-}
-
-interface RecommendedInstitute {
-  _id: string;
-  name: string;
-  email: string;
-  phone: string;
-  address: string;
-  description: string;
-  requirement?: string[];
-  category?: string;
-  itemName?: string;
-  quantity?: number;
-  urgency?: string;
-  beneficiaryCount?: number;
-  previousDonations: boolean;
-  createdAt?: string;
-}
-
-interface DonationCategory {
-  id: string;
-  name: string;
-  items: string[];
-  icon: React.ReactNode;
-}
-
-declare global {
-  interface Window {
-    Razorpay: any;
-  }
-}
-
 const DONATION_CATEGORIES: DonationCategory[] = [
+  {
+    id: "food",
+    name: "Food & Nutrition",
+    icon: <Package size={24} />,
+    items: ["Rice", "Wheat", "Lentils", "Cooking Oil", "Spices", "Vegetables"],
+  },
   {
     id: "education",
     name: "Education",
-    icon: <BookOpen className="w-5 h-5" />,
-    items: [
-      "Textbooks",
-      "Notebooks",
-      "School Bags",
-      "Stationery",
-      "Uniforms",
-      "Educational Toys",
-      "Computers",
-      "Library Books",
-    ],
+    icon: <Sparkles size={24} />,
+    items: ["Notebooks", "Pens/Pencils", "Textbooks", "School Bags", "Uniforms"],
   },
   {
-    id: "food",
-    name: "Food",
-    icon: <Utensils className="w-5 h-5" />,
-    items: [
-      "Rice",
-      "Wheat",
-      "Pulses",
-      "Cooking Oil",
-      "Vegetables",
-      "Fruits",
-      "Milk Products",
-      "Dry Rations",
-    ],
+    id: "medical",
+    name: "Medical",
+    icon: <Heart size={24} />,
+    items: ["Medicines", "First Aid Kits", "Wheelchairs", "Hygiene Kits"],
   },
   {
     id: "clothing",
     name: "Clothing",
-    icon: <Shirt className="w-5 h-5" />,
-    items: [
-      "Children's Wear",
-      "Winter Wear",
-      "School Uniforms",
-      "Shoes",
-      "Baby Clothes",
-      "Blankets",
-    ],
-  },
-  {
-    id: "healthcare",
-    name: "Healthcare",
-    icon: <Stethoscope className="w-5 h-5" />,
-    items: [
-      "Medicines",
-      "Medical Equipment",
-      "First Aid Kits",
-      "Hygiene Products",
-      "Sanitizers",
-      "Face Masks",
-    ],
+    icon: <ShoppingCart size={24} />,
+    items: ["Shirts", "Pants", "Sarees", "Kids Wear", "Blankets"],
   },
 ];
 
+const config = {
+  apiBaseUrl: import.meta.env.VITE_API_BASE_URL,
+};
+
 const BrowseDonate = () => {
   const { user } = useUser();
+  const [donorName, setDonorName] = useState(user?.fullName || "");
+  const [selectedCategory, setSelectedCategory] = useState("");
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [recommendedInstitutes, setRecommendedInstitutes] = useState<RecommendedInstitute[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [recommendedInfoMessage, setRecommendedInfoMessage] = useState<string | null>(null);
 
-  const [activeCategory, setActiveCategory] = useState("all");
-  const [donationType, setDonationType] = useState("all");
-  const [showCheckout, setShowCheckout] = useState(false);
-  const [showInstituteModal, setShowInstituteModal] = useState(false);
-  const [selectedInstitute, setSelectedInstitute] =
-    useState<RecommendedInstitute | null>(null);
+  // Pagination and filtering states for "All Institutes"
+  const [allInstitutes, setAllInstitutes] = useState<RecommendedInstitute[]>([]);
+  const [impactStories, setImpactStories] = useState<any[]>([]);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [pageSize, setPageSize] = useState(6);
+  const [activeCategory, setActiveCategory] = useState("all"); // Filter for Browse All
   const [searchQuery, setSearchQuery] = useState("");
-  const [filteredInstitutes, setFilteredInstitutes] = useState<Institute[]>([]);
-  const [selectedDonationType, setSelectedDonationType] = useState<
-    "fixed" | "resource"
-  >("fixed");
-  const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
-  const [resourceQuantities, setResourceQuantities] = useState<
-    Record<number, number>
-  >({});
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [sortBy, setSortBy] = useState("recent");
+  const [showFilteredAll, setShowFilteredAll] = useState(false); // If true, filter "All" by recommendation criteria
+
+  // Derived state for "All Institutes"
+  const categories = [
+    { id: "all", name: "All Causes" },
+    { id: "food", name: "Food & Hunger" },
+    { id: "education", name: "Education" },
+    { id: "healthcare", name: "Healthcare" },
+    { id: "animals", name: "Animals" },
+    { id: "environment", name: "Environment" },
+  ];
+
+  const displayedAllInstitutes = useMemo(() => {
+    let result = [...allInstitutes];
+
+    // 1. Filter by Category
+    if (activeCategory !== "all") {
+      result = result.filter(
+        (inst) =>
+          (inst.category || "").toLowerCase() === activeCategory.toLowerCase()
+      );
+    }
+
+    // 2. Filter by Search Query
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(
+        (inst) =>
+          inst.name.toLowerCase().includes(q) ||
+          inst.description.toLowerCase().includes(q) ||
+          inst.address.toLowerCase().includes(q)
+      );
+    }
+
+    // 3. (Optional) Filter by Recommendation Criteria
+    if (showFilteredAll) {
+      // reuse logic: matches selectedCategory or selectedItems
+      const targetCat = selectedCategory.toLowerCase().trim();
+      const itemsLower = selectedItems.map((i) => i.toLowerCase());
+
+      result = result.filter((inst) => {
+        const catMatch =
+          targetCat === "" ||
+          (inst.category || "").toLowerCase() === targetCat;
+        const itemMatch = itemsLower.some(
+          (i) =>
+            (inst.itemName || "").toLowerCase().includes(i) ||
+            inst.description.toLowerCase().includes(i) ||
+            (inst.requirement || []).join(", ").toLowerCase().includes(i)
+        );
+        return catMatch || itemMatch;
+      });
+    }
+
+    // 4. Sort
+    result.sort((a, b) => {
+      switch (sortBy) {
+        case "beneficiaries":
+          return (b.beneficiaryCount || 0) - (a.beneficiaryCount || 0);
+        case "urgency": {
+          const urgencyWeight = (u?: string) => {
+            const v = (u || "").toLowerCase();
+            if (v === "critical") return 3;
+            if (v === "high") return 2;
+            if (v === "medium") return 1;
+            return 0;
+          };
+          return urgencyWeight(b.urgency) - urgencyWeight(a.urgency);
+        }
+        case "name":
+          return a.name.localeCompare(b.name);
+        case "recent":
+        default:
+          // Assuming createdAt exists, else stable sort
+          return (
+            new Date(b.createdAt || 0).getTime() -
+            new Date(a.createdAt || 0).getTime()
+          );
+      }
+    });
+
+    return result;
+  }, [
+    allInstitutes,
+    activeCategory,
+    searchQuery,
+    sortBy,
+    showFilteredAll,
+    selectedCategory,
+    selectedItems,
+  ]);
+
+  const totalPages = Math.ceil(displayedAllInstitutes.length / pageSize);
+  const pagedInstitutes = displayedAllInstitutes.slice(
+    pageIndex * pageSize,
+    (pageIndex + 1) * pageSize
+  );
+
+  const [isGeneratingReceipt, setIsGeneratingReceipt] = useState(false);
   const [currentDonation, setCurrentDonation] = useState<any>(null);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [showDonationPrompt, setShowDonationPrompt] = useState(false);
+  const [showInstituteModal, setShowInstituteModal] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedInstitute, setSelectedInstitute] = useState<any>(null);
   const [windowSize, setWindowSize] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
   });
-  const [showDonationPrompt, setShowDonationPrompt] = useState(true);
-  const [donorName, setDonorName] = useState(user?.fullName || "");
-  const [donationItem, setDonationItem] = useState("");
-  const [recommendedInstitutes, setRecommendedInstitutes] = useState<
-    RecommendedInstitute[]
-  >([]);
-  const [allInstitutes, setAllInstitutes] = useState<RecommendedInstitute[]>([]);
-  const [impactStories, setImpactStories] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<string>("education");
-  const [selectedItems, setSelectedItems] = useState<string[]>(["Notebooks"]);
-  const [sortBy, setSortBy] = useState<string>("recent");
-  const [pageIndex, setPageIndex] = useState<number>(0);
-  const [pageSize, setPageSize] = useState<number>(9);
-  const [showFilteredAll, setShowFilteredAll] = useState<boolean>(false);
-  const [recommendedInfoMessage, setRecommendedInfoMessage] = useState<string | null>(null);
-  const displayedAllInstitutes = React.useMemo(() => {
-    let list = allInstitutes;
-    if (showFilteredAll) {
-      const cat = (selectedCategory || "").toLowerCase();
-      const itemsLower = selectedItems.map((i) => i.toLowerCase());
-      const containsAny = (text?: string) => {
-        const t = (text || "").toLowerCase();
-        return itemsLower.some((i) => t.includes(i));
-      };
-      list = list.filter((inst) => {
-        const catMatch =
-          cat === "" || cat === "all"
-            ? true
-            : (inst.category || "").toLowerCase() === cat;
-        const itemMatch =
-          containsAny(inst.itemName) ||
-          containsAny(inst.description) ||
-          containsAny((inst.requirement || []).join(", "));
-        return catMatch && itemMatch;
-      });
-    }
-    if (activeCategory !== "all") {
-      list = list.filter(
-        (inst) =>
-          inst.category?.toLowerCase() === activeCategory.toLowerCase()
-      );
-    }
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      list = list.filter(
-        (inst) =>
-          inst.name.toLowerCase().includes(q) ||
-          inst.description?.toLowerCase().includes(q) ||
-          inst.address?.toLowerCase().includes(q)
-      );
-    }
-    const urgencyRank: Record<string, number> = {
-      critical: 4,
-      high: 3,
-      medium: 2,
-      low: 1,
-    };
-    if (sortBy === "recent") {
-      list = [...list].sort(
-        (a, b) =>
-          new Date(b.createdAt || 0).getTime() -
-          new Date(a.createdAt || 0).getTime()
-      );
-    } else if (sortBy === "beneficiaries") {
-      list = [...list].sort(
-        (a, b) => (b.beneficiaryCount || 0) - (a.beneficiaryCount || 0)
-      );
-    } else if (sortBy === "urgency") {
-      list = [...list].sort(
-        (a, b) =>
-          (urgencyRank[(b.urgency || "").toLowerCase()] || 0) -
-          (urgencyRank[(a.urgency || "").toLowerCase()] || 0)
-      );
-    } else if (sortBy === "name") {
-      list = [...list].sort((a, b) => a.name.localeCompare(b.name));
-    }
-    return list;
-  }, [allInstitutes, activeCategory, searchQuery, sortBy]);
 
-  const totalPages = Math.ceil(displayedAllInstitutes.length / pageSize) || 1;
-  const pagedInstitutes = React.useMemo(() => {
-    const start = pageIndex * pageSize;
-    return displayedAllInstitutes.slice(start, start + pageSize);
-  }, [displayedAllInstitutes, pageIndex, pageSize]);
-
-  const fixedAmountOptions: DonationOption[] = [
-    {
-      id: 1,
-      amount: 100,
-      label: "Basic Support",
-      description: "Helps provide essential supplies",
-    },
-    {
-      id: 2,
-      amount: 500,
-      label: "Regular Donor",
-      description: "Supports monthly programs",
-    },
-    {
-      id: 3,
-      amount: 1000,
-      label: "Major Contributor",
-      description: "Enables significant impact",
-    },
-    {
-      id: 4,
-      amount: 5000,
-      label: "Champion Donor",
-      description: "Drives major initiatives",
-    },
-  ];
-
-  const receiptRef = useRef<HTMLDivElement>(null);
-  const [isGeneratingReceipt, setIsGeneratingReceipt] = useState(false);
-
-  // Deprecated legacy filtering (removed - now using API-driven AllInstitutes with filters)
-
-  const handleInstituteClick = (institute: RecommendedInstitute) => {
+  const handleInstituteClick = (institute: any) => {
     setSelectedInstitute(institute);
     setShowInstituteModal(true);
-  };
-
-  // Sample data
-  const categories = [
-    { id: "all", name: "All Institutes" },
-    { id: "education", name: "Education" },
-    { id: "healthcare", name: "Healthcare" },
-    { id: "environment", name: "Environment" },
-    { id: "animals", name: "Animal Welfare" },
-    { id: "community", name: "Community" },
-  ];
-
-  const handleDonate = () => {
-    let donationDetails;
-    if (selectedDonationType === "fixed" && selectedAmount) {
-      donationDetails = {
-        type: "monetary",
-        amount: selectedAmount,
-        institute: selectedInstitute.name,
-        description: "Fixed Amount Donation",
-      };
-    } else if (selectedDonationType === "resource") {
-      const selectedResources = Object.entries(resourceQuantities)
-        .filter(([_, quantity]) => quantity > 0)
-        .map(([needId, quantity]) => {
-          const resource = selectedInstitute.needs.find(
-            (n: Need) => n.id === Number(needId)
-          );
-          return {
-            name: resource?.name,
-            quantity,
-            amount: (resource?.amount || 0) * quantity,
-          };
-        });
-
-      donationDetails = {
-        type: "resource",
-        resources: selectedResources,
-        institute: selectedInstitute.name,
-        totalAmount: selectedResources.reduce(
-          (sum, item) => sum + item.amount,
-          0
-        ),
-      };
-    }
-
-    setCurrentDonation(donationDetails);
-    setShowPaymentModal(true);
-    setShowInstituteModal(false);
   };
 
   const loadRazorpay = () => {
@@ -377,32 +239,56 @@ const BrowseDonate = () => {
     });
   };
 
-  const handlePaymentSuccess = (response: any) => {
-    setShowPaymentModal(false);
-    setCurrentDonation((prev) => ({
-      ...prev,
-      paymentId: response.razorpay_payment_id,
-    }));
-    const amountToSend =
-      currentDonation?.type === "resource"
-        ? currentDonation?.totalAmount || 0
-        : currentDonation?.amount || 0;
-    const payload = {
-      donorName: user?.fullName || "Anonymous",
-      amount: amountToSend,
-      donationItem:
-        currentDonation?.type === "resource"
-          ? `Resources donated to ${currentDonation?.institute}`
-          : `Monetary donation to ${currentDonation?.institute}`,
-    };
-    axios
-      .post(`${config.apiBaseUrl}/api/donations`, payload)
-      .then(() => {
-        setShowSuccess(true);
-      })
-      .catch(() => {
-        setShowSuccess(true);
-      });
+  const handlePaymentSuccess = async (response: any) => {
+    try {
+      // Prepare donation data
+      const donationData = {
+        paymentId: response.razorpay_payment_id,
+        donorId: user?.id,
+        donorName: user?.fullName || "Anonymous",
+        instituteId: selectedInstitute._id || selectedInstitute.id, // Handle both _id and id
+        instituteName: currentDonation.institute,
+        donationItem:
+          currentDonation.type === "monetary"
+            ? "Fixed Amount"
+            : currentDonation.resources?.map((r: any) => r.name).join(", "),
+        amount:
+          currentDonation.type === "monetary"
+            ? currentDonation.amount
+            : currentDonation.totalAmount,
+        donationType: currentDonation.type,
+        resources:
+          currentDonation.type === "resource"
+            ? currentDonation.resources
+            : null,
+        date: new Date().toISOString(),
+        status: "completed",
+      };
+
+      // Make API call to save donation
+      const res = await axios.post(`${config.apiBaseUrl}/api/donations`, donationData);
+
+      // Close payment modal first
+      setShowPaymentModal(false);
+
+      // Store payment ID from Razorpay response
+      setCurrentDonation((prev: any) => ({
+        ...prev,
+        paymentId: response.razorpay_payment_id,
+      }));
+
+      // Show success modal
+      setShowSuccess(true);
+    } catch (error) {
+      console.error("Error saving donation:", error);
+      // Still show success modal even if API call fails
+      setShowPaymentModal(false);
+      setCurrentDonation((prev: any) => ({
+        ...prev,
+        paymentId: response.razorpay_payment_id,
+      }));
+      setShowSuccess(true);
+    }
   };
 
   const handleRazorpayPayment = async (amount: number) => {
@@ -418,8 +304,8 @@ const BrowseDonate = () => {
         handlePaymentSuccess(response);
       },
       prefill: {
-        name: "Donor Name",
-        email: "donor@example.com",
+        name: user?.fullName || "Donor Name",
+        email: user?.primaryEmailAddress?.emailAddress || "donor@example.com",
       },
       theme: {
         color: "#4F46E5",
@@ -435,168 +321,160 @@ const BrowseDonate = () => {
     }
   };
 
-  const generateReceipt = async (paymentId: string) => {
-    if (!currentDonation || !paymentId) {
+  const generateReceipt = () => {
+    if (!currentDonation || !currentDonation.paymentId) {
       alert("Missing donation information");
       return;
     }
 
-    setIsGeneratingReceipt(true);
     try {
-      // Create a temporary container for the receipt
-      const receiptContainer = document.createElement("div");
-      receiptContainer.style.position = "absolute";
-      receiptContainer.style.left = "-9999px";
-      receiptContainer.style.top = "-9999px";
+      // Create receipt content in HTML
+      const receiptContent = (
+        <div className="bg-white p-8 rounded-xl max-w-2xl mx-auto">
+          <div className="text-center mb-6">
+            <h1 className="text-2xl font-bold text-indigo-600">DonorConnect</h1>
+            <p className="text-gray-600">Donation Receipt</p>
+          </div>
 
-      receiptContainer.innerHTML = `
-        <div class="p-8 bg-white" style="width: 800px; font-family: Arial, sans-serif;">
-          <!-- Header -->
-          <div style="text-align: center; margin-bottom: 2rem; border-bottom: 2px solid #4F46E5; padding-bottom: 1rem;">
-            <h1 style="color: #4F46E5; font-size: 28px; font-weight: bold; margin-bottom: 0.5rem;">Donation Receipt</h1>
-            <p style="color: #6B7280; font-size: 16px;">Tax Deductible Receipt for Charitable Donation</p>
+          <div className="mb-6">
+            <p className="font-medium">DonorConnect Foundation</p>
+            <div className="text-sm text-gray-600">
+              <p>123 Charity Lane</p>
+              <p>Mumbai, Maharashtra 400001</p>
+              <p>India</p>
+              <p>support@donorconnect.org</p>
+            </div>
           </div>
-          
-          <!-- Organization Info -->
-          <div style="margin-bottom: 2rem;">
-            <h2 style="color: #1F2937; font-size: 20px; font-weight: bold;">DonorConnect</h2>
-            <p style="color: #4B5563; font-size: 14px; margin-top: 0.5rem;">
-              123 Charity Lane<br/>
-              Mumbai, Maharashtra 400001<br/>
-              India<br/>
-              support@donorconnect.org
-            </p>
-          </div>
-          
-          <!-- Receipt Details -->
-          <div style="margin-bottom: 2rem; border: 1px solid #E5E7EB; border-radius: 8px; overflow: hidden;">
-            <table style="width: 100%; border-collapse: collapse; background-color: #F9FAFB;">
-              <tr>
-                <td style="padding: 12px 16px; border-bottom: 1px solid #E5E7EB; font-weight: bold; width: 40%;">Receipt Number</td>
-                <td style="padding: 12px 16px; border-bottom: 1px solid #E5E7EB;">${paymentId}</td>
-              </tr>
-              <tr>
-                <td style="padding: 12px 16px; border-bottom: 1px solid #E5E7EB; font-weight: bold;">Date</td>
-                <td style="padding: 12px 16px; border-bottom: 1px solid #E5E7EB;">
-                  ${new Date().toLocaleDateString("en-IN", {
+
+          <div className="border-t border-b border-gray-200 py-4 mb-6">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-gray-600">Receipt Number:</p>
+                <p className="font-medium">{currentDonation.paymentId}</p>
+              </div>
+              <div>
+                <p className="text-gray-600">Date:</p>
+                <p className="font-medium">
+                  {new Date().toLocaleDateString("en-IN", {
                     day: "2-digit",
                     month: "long",
                     year: "numeric",
                   })}
-                </td>
-              </tr>
-              <tr>
-                <td style="padding: 12px 16px; border-bottom: 1px solid #E5E7EB; font-weight: bold;">Donor Name</td>
-                <td style="padding: 12px 16px; border-bottom: 1px solid #E5E7EB;">${
-                  user?.fullName || "Anonymous"
-                }</td>
-              </tr>
-              <tr>
-                <td style="padding: 12px 16px; font-weight: bold;">Recipient Organization</td>
-                <td style="padding: 12px 16px;">${
-                  currentDonation.institute
-                }</td>
-              </tr>
-            </table>
+                </p>
+              </div>
+              <div>
+                <p className="text-gray-600">Donor Name:</p>
+                <p className="font-medium">{user?.fullName || "Anonymous"}</p>
+              </div>
+              <div>
+                <p className="text-gray-600">Recipient Organization:</p>
+                <p className="font-medium">{currentDonation.institute}</p>
+              </div>
+            </div>
           </div>
 
-          <!-- Donation Details -->
-          <div style="margin-bottom: 2rem;">
-            <table style="width: 100%; border-collapse: collapse;">
-              <thead>
-                <tr style="background-color: #4F46E5;">
-                  <th style="padding: 12px 16px; color: white; text-align: left; border-radius: 8px 0 0 0;">Description</th>
-                  <th style="padding: 12px 16px; color: white; text-align: right; border-radius: 0 8px 0 0;">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr style="border-bottom: 1px solid #E5E7EB;">
-                  <td style="padding: 16px; background-color: #F9FAFB;">Charitable Donation</td>
-                  <td style="padding: 16px; text-align: right; background-color: #F9FAFB; font-weight: bold;">
-                    ₹${currentDonation.amount.toLocaleString("en-IN")}
-                  </td>
-                </tr>
-                <tr style="background-color: #F3F4F6;">
-                  <td style="padding: 16px; font-weight: bold;">Total Amount</td>
-                  <td style="padding: 16px; text-align: right; font-weight: bold;">
-                    ₹${currentDonation.amount.toLocaleString("en-IN")}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <div className="mb-6">
+            <h2 className="text-lg font-semibold mb-4">Donation Details</h2>
+            <div className="space-y-2">
+              {currentDonation.type === "monetary" ? (
+                <div className="flex justify-between py-2 border-b">
+                  <span>Charitable Donation</span>
+                  <span className="font-medium">
+                    ₹{currentDonation.amount.toLocaleString("en-IN")}
+                  </span>
+                </div>
+              ) : (
+                <>
+                  {currentDonation.resources?.map(
+                    (resource: any, index: number) => (
+                      <div
+                        key={index}
+                        className="flex justify-between py-2 border-b"
+                      >
+                        <span>{`${resource.name} x ${resource.quantity}`}</span>
+                        <span className="font-medium">
+                          ₹{resource.amount.toLocaleString("en-IN")}
+                        </span>
+                      </div>
+                    )
+                  )}
+                </>
+              )}
+              <div className="flex justify-between pt-4 font-semibold">
+                <span>Total Amount</span>
+                <span>
+                  ₹
+                  {(currentDonation.type === "monetary"
+                    ? currentDonation.amount
+                    : currentDonation.totalAmount
+                  ).toLocaleString("en-IN")}
+                </span>
+              </div>
+            </div>
           </div>
 
-          <!-- Footer -->
-          <div style="margin-top: 2rem; border-top: 2px solid #E5E7EB; padding-top: 1rem;">
-            <p style="color: #4B5563; font-size: 14px; margin-bottom: 0.5rem;">
-              This receipt is computer generated and does not require a physical signature.
+          <div className="text-center text-sm text-gray-600 mt-8">
+            <p>
+              This receipt is computer generated and does not require a physical
+              signature.
             </p>
-            <p style="color: #6B7280; font-size: 12px;">
-              Thank you for your generous donation. Your contribution will make a meaningful impact.
+            <p className="mt-2">
+              Thank you for your generous donation. Your contribution will make
+              a meaningful impact.
             </p>
           </div>
         </div>
-      `;
+      );
 
-      // Add the receipt to the document
-      document.body.appendChild(receiptContainer);
-
-      try {
-        // Convert to canvas
-        const canvas = await html2canvas(
-          receiptContainer.firstChild as HTMLElement,
-          {
-            scale: 2,
-            logging: false,
-            useCORS: true,
-            allowTaint: true,
-            backgroundColor: "#ffffff",
-          }
-        );
-
-        // Create PDF
-        const pdf = new jsPDF({
-          orientation: "portrait",
-          unit: "mm",
-          format: "a4",
-        });
-
-        const imgData = canvas.toDataURL("image/png");
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-
-        pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
-        pdf.save(`donation-receipt-${paymentId}.pdf`);
-      } catch (error) {
-        console.error("Error generating PDF:", error);
-        throw new Error("Failed to generate PDF");
-      } finally {
-        // Clean up
-        document.body.removeChild(receiptContainer);
+      // Create a new window and write the receipt content
+      const receiptWindow = window.open("", "_blank");
+      if (!receiptWindow) {
+        alert("Please allow popups for this website to view the receipt");
+        return;
       }
+
+      receiptWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Donation Receipt</title>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+          </head>
+          <body>
+            <div class="min-h-screen bg-gray-100 py-8">
+              ${ReactDOMServer.renderToString(receiptContent)}
+              <div class="text-center mt-8">
+                <button onclick="window.print()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                  Print Receipt
+                </button>
+              </div>
+            </div>
+          </body>
+        </html>
+      `);
+      receiptWindow.document.close();
     } catch (error) {
       console.error("Error generating receipt:", error);
       alert("Failed to generate receipt. Please try again.");
-    } finally {
-      setIsGeneratingReceipt(false);
     }
   };
 
   const fetchRecommendations = async () => {
+    if (!selectedCategory && selectedItems.length === 0) return;
     setIsLoading(true);
     try {
-      // Join selected items with commas for the API call
-      const itemsString = selectedItems.join(", ");
-      const response = await fetch(
-        `${
-          config.apiBaseUrl
-        }/api/llm/match-donor?donorName=${encodeURIComponent(
-          user?.fullName || ""
-        )}&donationItem=${encodeURIComponent(itemsString)}`
-      );
-      const data = await response.json();
+      // POST to API
+      const res = await axios.post(`${config.apiBaseUrl}/api/recommendations`, {
+        category: selectedCategory,
+        items: selectedItems,
+        donorName,
+      });
+
+      const data = res.data;
       let matched: any[] = [];
-      if (data?.success) {
+      if (data && data.success) {
         matched = Array.isArray(data.matchedInstitutes)
           ? data.matchedInstitutes
           : [];
@@ -874,33 +752,15 @@ const BrowseDonate = () => {
     if (!selectedInstitute) return null;
 
     const handleDonate = async (amount: number) => {
+      // Changed to open Payment Modal instead of direct Razorpay
       setCurrentDonation({
         institute: selectedInstitute.name,
         amount,
         type: "monetary",
         date: new Date().toISOString(),
       });
-      const options: RazorpayOptions = {
-        key: import.meta.env.VITE_RAZOR_PAY,
-        amount: amount * 100, // Convert to paise
-        currency: "INR",
-        name: selectedInstitute.name,
-        description: `Donation for ${selectedInstitute.name}`,
-        handler: function (response) {
-          handlePaymentSuccess(response);
-          setShowInstituteModal(false);
-        },
-        prefill: {
-          name: user?.fullName || "",
-          email: user?.primaryEmailAddress?.emailAddress || "",
-        },
-        theme: {
-          color: "#4F46E5",
-        },
-      };
-
-      const razorpay = new window.Razorpay(options);
-      razorpay.open();
+      setShowInstituteModal(false);
+      setShowPaymentModal(true);
     };
 
     return (
@@ -1232,6 +1092,100 @@ const BrowseDonate = () => {
       {showDonationPrompt && <DonationPromptModal />}
       {showInstituteModal && <InstituteDetailsModal />}
 
+      {/* Payment Modal */}
+      {showPaymentModal && currentDonation && (
+        <div className="fixed inset-0 z-50">
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" />
+          <div className="fixed inset-0 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto scrollbar-hide relative">
+              <div className="p-6 border-b border-gray-200">
+                <div className="flex justify-between items-center">
+                  <h2 className="text-xl font-semibold text-gray-900">
+                    Donation Summary
+                  </h2>
+                  <button
+                    onClick={() => setShowPaymentModal(false)}
+                    className="text-gray-500 hover:text-gray-700"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6">
+                <div className="bg-indigo-50 rounded-xl p-6 mb-6">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="h-16 w-16 rounded-lg bg-white flex items-center justify-center">
+                      <Heart size={32} className="text-indigo-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-lg text-indigo-900">
+                        {currentDonation.institute}
+                      </h3>
+                      <p className="text-indigo-600">
+                        {currentDonation.type === "monetary"
+                          ? "Fixed Amount Donation"
+                          : "Resource Donation"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    {currentDonation.type === "monetary" ? (
+                      <div className="flex justify-between items-center py-2 border-b border-indigo-100">
+                        <span className="text-indigo-900">Donation Amount</span>
+                        <span className="font-semibold text-indigo-900">
+                          ₹{currentDonation.amount}
+                        </span>
+                      </div>
+                    ) : (
+                      <>
+                        {currentDonation.resources?.map(
+                          (resource: any, index: number) => (
+                            <div
+                              key={index}
+                              className="flex justify-between items-center py-2 border-b border-indigo-100"
+                            >
+                              <span className="text-indigo-900">
+                                {resource.name} x {resource.quantity}
+                              </span>
+                              <span className="font-semibold text-indigo-900">
+                                ₹{resource.amount}
+                              </span>
+                            </div>
+                          )
+                        )}
+                        <div className="flex justify-between items-center pt-3">
+                          <span className="font-medium text-indigo-900">
+                            Total Amount
+                          </span>
+                          <span className="font-semibold text-indigo-900">
+                            ₹{currentDonation.totalAmount}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  onClick={() =>
+                    handleRazorpayPayment(
+                      currentDonation.type === "monetary"
+                        ? currentDonation.amount
+                        : currentDonation.totalAmount
+                    )
+                  }
+                  className="w-full bg-indigo-600 text-white py-4 rounded-xl font-medium hover:bg-indigo-700 transition-colors"
+                >
+                  Proceed to Payment
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {!showDonationPrompt && (
         <>
           <div className="flex justify-between items-center mb-8">
@@ -1357,80 +1311,126 @@ const BrowseDonate = () => {
         </>
       )}
 
-      {showSuccess && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.5 }}
-          className="space-y-4"
-        >
-          <div className="text-sm text-gray-500 bg-gray-50 p-4 rounded-xl">
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span>Transaction ID:</span>
-                <span className="font-medium">
-                  {currentDonation?.paymentId}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Amount:</span>
-                <span className="font-medium">
-                  ₹{currentDonation?.amount.toLocaleString("en-IN")}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Date:</span>
-                <span className="font-medium">
-                  {new Date().toLocaleDateString("en-IN", {
-                    day: "2-digit",
-                    month: "long",
-                    year: "numeric",
-                  })}
-                </span>
+      {/* Success Modal */}
+      <AnimatePresence>
+        {showSuccess && (
+          <>
+            <div className="fixed inset-0 z-[60]">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+              />
+
+              <Confetti
+                width={windowSize.width}
+                height={windowSize.height}
+                recycle={false}
+                numberOfPieces={200}
+                gravity={0.2}
+                style={{ position: "fixed", top: 0, left: 0, zIndex: 61 }}
+              />
+
+              <div className="fixed inset-0 z-[62] flex items-center justify-center p-4">
+                <motion.div
+                  initial={{ scale: 0.5, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.5, opacity: 0 }}
+                  transition={{ type: "spring", duration: 1.5 }}
+                  className="bg-white rounded-2xl p-8 w-full max-w-lg shadow-2xl"
+                >
+                  <div className="text-center relative">
+                    {/* Close button */}
+                    <button
+                      onClick={() => setShowSuccess(false)}
+                      className="absolute right-0 top-0 p-2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-6 h-6" />
+                    </button>
+
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 0.2, type: "spring" }}
+                      className="mx-auto w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6"
+                    >
+                      <CheckCircle2 className="w-12 h-12 text-green-600" />
+                    </motion.div>
+
+                    <motion.div
+                      initial={{ y: 20, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      transition={{ delay: 0.3 }}
+                      className="space-y-4"
+                    >
+                      <h3 className="text-3xl font-bold text-gray-900">
+                        Thank You for Your Generosity!
+                      </h3>
+                      <p className="text-lg text-gray-600">
+                        Your donation of ₹
+                        {currentDonation?.amount ||
+                          currentDonation?.totalAmount}{" "}
+                        will make a meaningful impact in someone's life.
+                      </p>
+                    </motion.div>
+
+                    <motion.div
+                      className="flex justify-center gap-6 my-8"
+                      initial={{ y: 20, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      transition={{ delay: 0.4 }}
+                    >
+                      {[Heart, Star, Sparkles].map((Icon, index) => (
+                        <motion.div
+                          key={index}
+                          animate={{
+                            y: [0, -10, 0],
+                            scale: [1, 1.2, 1],
+                          }}
+                          transition={{
+                            duration: 2,
+                            repeat: Infinity,
+                            delay: index * 0.2,
+                          }}
+                          className="p-3 bg-indigo-50 rounded-full"
+                        >
+                          <Icon className="w-8 h-8 text-indigo-600" />
+                        </motion.div>
+                      ))}
+                    </motion.div>
+
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 0.5 }}
+                      className="space-y-4"
+                    >
+                      <div className="text-sm text-gray-500 bg-gray-50 p-4 rounded-xl">
+                        <p>
+                          A confirmation email has been sent to your registered
+                          email address.
+                        </p>
+                        <p className="mt-1">
+                          Transaction ID: {currentDonation?.paymentId}
+                        </p>
+                      </div>
+
+                      <Button
+                        onClick={generateReceipt}
+                        className="mt-4"
+                        variant="outline"
+                      >
+                        View Receipt
+                      </Button>
+                    </motion.div>
+                  </div>
+                </motion.div>
               </div>
             </div>
-          </div>
-
-          <div className="flex gap-3">
-            <Button
-              onClick={() => generateReceipt(currentDonation?.paymentId)}
-              disabled={isGeneratingReceipt}
-              className="flex-1"
-              variant="outline"
-            >
-              {isGeneratingReceipt ? (
-                <span className="flex items-center gap-2">
-                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    />
-                  </svg>
-                  Generating...
-                </span>
-              ) : (
-                <span className="flex items-center gap-2">
-                  <Download size={16} />
-                  Download Receipt
-                </span>
-              )}
-            </Button>
-
-            <Button onClick={() => setShowSuccess(false)} variant="outline">
-              Close
-            </Button>
-          </div>
-        </motion.div>
-      )}
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

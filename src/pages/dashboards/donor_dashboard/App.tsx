@@ -12,7 +12,7 @@ import {
 import Sidebar from "./components/Sidebar";
 import HomePage from "./pages/HomePage";
 import BrowseDonate from "./pages/BrowseDonate";
-import RecommendDonate from "./pages/RecommendDonate";
+import GeneralDonations from "./pages/GeneralDonations";
 import MyDonations from "./pages/MyDonations";
 import ImpactReports from "./pages/ImpactReports";
 import ReviewsFeedback from "./pages/ReviewsFeedback";
@@ -60,7 +60,7 @@ function App() {
   const navItems = [
     { id: "home", label: "Home", icon: <Home size={20} /> },
     { id: "browse", label: "Browse & Donate", icon: <Search size={20} /> },
-    { id: "recommend", label: "Recommendations", icon: <Sparkle size={20} /> },
+    { id: "general", label: "General Donations", icon: <Sparkle size={20} /> },
     { id: "donations", label: "My Donations", icon: <Clock size={20} /> },
     { id: "impact", label: "Impact & Reports", icon: <BarChart size={20} /> },
     {
@@ -81,8 +81,8 @@ function App() {
         return <HomePage setActiveTab={setActiveTab} />;
       case "browse":
         return <BrowseDonate />;
-      case "recommend":
-        return <RecommendDonate />;
+      case "general":
+        return <GeneralDonations />;
       case "donations":
         return <MyDonations />;
       case "impact":

@@ -1,9 +1,8 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { SignIn as ClerkSignIn, useUser } from '@clerk/clerk-react';
 import { useNavigate } from 'react-router-dom';
 import { Heart, ShieldCheck, Clock, Users } from 'lucide-react';
 import axios from 'axios';
-import { storage } from '../utils/storage';
 
 const SignIn = () => {
   const navigate = useNavigate();
