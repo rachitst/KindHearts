@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import axios from 'axios';
 import {
   Search,
   Filter,
@@ -95,6 +96,7 @@ interface RecommendedInstitute {
   urgency?: string;
   beneficiaryCount?: number;
   previousDonations: boolean;
+  createdAt?: string;
 }
 
 interface DonationCategory {
@@ -171,83 +173,6 @@ const DONATION_CATEGORIES: DonationCategory[] = [
 
 const BrowseDonate = () => {
   const { user } = useUser();
-  const institutes = [
-    {
-      id: 1,
-      name: "City Children's Hospital",
-      category: "healthcare",
-      description:
-        "Supporting pediatric care and medical research for children.",
-      image:
-        "https://images.unsplash.com/photo-1538108149393-fbbd81895907?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60",
-      needs: [
-        { id: 1, name: "Medical Supplies", amount: 150, type: "monetary" },
-        { id: 2, name: "Children's Books", amount: 75, type: "resource" },
-        { id: 3, name: "Toys for Patients", amount: 100, type: "resource" },
-      ],
-    },
-    {
-      id: 2,
-      name: "Local Food Bank",
-      category: "community",
-      description:
-        "Providing meals and groceries to families in need throughout the community.",
-      image:
-        "https://images.unsplash.com/photo-1593113646773-028c64a8f1b8?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60",
-      needs: [
-        { id: 4, name: "Canned Goods", amount: 50, type: "resource" },
-        { id: 5, name: "Fresh Produce Fund", amount: 200, type: "monetary" },
-        { id: 6, name: "Volunteer Equipment", amount: 120, type: "monetary" },
-      ],
-    },
-    {
-      id: 3,
-      name: "Greenville Animal Shelter",
-      category: "animals",
-      description:
-        "Rescuing and rehoming abandoned pets and providing veterinary care.",
-      image:
-        "https://images.unsplash.com/photo-1548767797-d8c844163c4c?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60",
-      needs: [
-        { id: 7, name: "Pet Food", amount: 85, type: "resource" },
-        { id: 8, name: "Medical Care Fund", amount: 250, type: "monetary" },
-        { id: 9, name: "Shelter Supplies", amount: 120, type: "resource" },
-      ],
-    },
-    {
-      id: 4,
-      name: "Westside Elementary School",
-      category: "education",
-      description:
-        "Supporting educational programs and resources for underprivileged students.",
-      image:
-        "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60",
-      needs: [
-        { id: 10, name: "School Supplies", amount: 60, type: "resource" },
-        { id: 11, name: "Library Books", amount: 150, type: "monetary" },
-        { id: 12, name: "Technology Fund", amount: 300, type: "monetary" },
-      ],
-    },
-    {
-      id: 5,
-      name: "Forest Conservation Trust",
-      category: "environment",
-      description:
-        "Protecting local forests and promoting sustainable environmental practices.",
-      image:
-        "https://images.unsplash.com/photo-1448375240586-882707db888b?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60",
-      needs: [
-        { id: 13, name: "Tree Planting", amount: 100, type: "monetary" },
-        {
-          id: 14,
-          name: "Conservation Equipment",
-          amount: 175,
-          type: "resource",
-        },
-        { id: 15, name: "Educational Materials", amount: 80, type: "monetary" },
-      ],
-    },
-  ];
 
   const [activeCategory, setActiveCategory] = useState("all");
   const [donationType, setDonationType] = useState("all");
@@ -256,7 +181,7 @@ const BrowseDonate = () => {
   const [selectedInstitute, setSelectedInstitute] =
     useState<RecommendedInstitute | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [filteredInstitutes, setFilteredInstitutes] = useState(institutes);
+  const [filteredInstitutes, setFilteredInstitutes] = useState<Institute[]>([]);
   const [selectedDonationType, setSelectedDonationType] = useState<
     "fixed" | "resource"
   >("fixed");
@@ -277,9 +202,85 @@ const BrowseDonate = () => {
   const [recommendedInstitutes, setRecommendedInstitutes] = useState<
     RecommendedInstitute[]
   >([]);
+  const [allInstitutes, setAllInstitutes] = useState<RecommendedInstitute[]>([]);
+  const [impactStories, setImpactStories] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>("education");
   const [selectedItems, setSelectedItems] = useState<string[]>(["Notebooks"]);
+  const [sortBy, setSortBy] = useState<string>("recent");
+  const [pageIndex, setPageIndex] = useState<number>(0);
+  const [pageSize, setPageSize] = useState<number>(9);
+  const [showFilteredAll, setShowFilteredAll] = useState<boolean>(false);
+  const [recommendedInfoMessage, setRecommendedInfoMessage] = useState<string | null>(null);
+  const displayedAllInstitutes = React.useMemo(() => {
+    let list = allInstitutes;
+    if (showFilteredAll) {
+      const cat = (selectedCategory || "").toLowerCase();
+      const itemsLower = selectedItems.map((i) => i.toLowerCase());
+      const containsAny = (text?: string) => {
+        const t = (text || "").toLowerCase();
+        return itemsLower.some((i) => t.includes(i));
+      };
+      list = list.filter((inst) => {
+        const catMatch =
+          cat === "" || cat === "all"
+            ? true
+            : (inst.category || "").toLowerCase() === cat;
+        const itemMatch =
+          containsAny(inst.itemName) ||
+          containsAny(inst.description) ||
+          containsAny((inst.requirement || []).join(", "));
+        return catMatch && itemMatch;
+      });
+    }
+    if (activeCategory !== "all") {
+      list = list.filter(
+        (inst) =>
+          inst.category?.toLowerCase() === activeCategory.toLowerCase()
+      );
+    }
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(
+        (inst) =>
+          inst.name.toLowerCase().includes(q) ||
+          inst.description?.toLowerCase().includes(q) ||
+          inst.address?.toLowerCase().includes(q)
+      );
+    }
+    const urgencyRank: Record<string, number> = {
+      critical: 4,
+      high: 3,
+      medium: 2,
+      low: 1,
+    };
+    if (sortBy === "recent") {
+      list = [...list].sort(
+        (a, b) =>
+          new Date(b.createdAt || 0).getTime() -
+          new Date(a.createdAt || 0).getTime()
+      );
+    } else if (sortBy === "beneficiaries") {
+      list = [...list].sort(
+        (a, b) => (b.beneficiaryCount || 0) - (a.beneficiaryCount || 0)
+      );
+    } else if (sortBy === "urgency") {
+      list = [...list].sort(
+        (a, b) =>
+          (urgencyRank[(b.urgency || "").toLowerCase()] || 0) -
+          (urgencyRank[(a.urgency || "").toLowerCase()] || 0)
+      );
+    } else if (sortBy === "name") {
+      list = [...list].sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return list;
+  }, [allInstitutes, activeCategory, searchQuery, sortBy]);
+
+  const totalPages = Math.ceil(displayedAllInstitutes.length / pageSize) || 1;
+  const pagedInstitutes = React.useMemo(() => {
+    const start = pageIndex * pageSize;
+    return displayedAllInstitutes.slice(start, start + pageSize);
+  }, [displayedAllInstitutes, pageIndex, pageSize]);
 
   const fixedAmountOptions: DonationOption[] = [
     {
@@ -311,39 +312,7 @@ const BrowseDonate = () => {
   const receiptRef = useRef<HTMLDivElement>(null);
   const [isGeneratingReceipt, setIsGeneratingReceipt] = useState(false);
 
-  // Memoize the filter function to prevent infinite loop
-  const filterInstitutes = useCallback(() => {
-    let filtered = institutes;
-
-    if (searchQuery) {
-      filtered = filtered.filter(
-        (institute) =>
-          institute.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          institute.description
-            .toLowerCase()
-            .includes(searchQuery.toLowerCase())
-      );
-    }
-
-    if (activeCategory !== "all") {
-      filtered = filtered.filter(
-        (institute) => institute.category === activeCategory
-      );
-    }
-
-    if (donationType !== "all") {
-      filtered = filtered.filter((institute) =>
-        institute.needs.some((need: Need) => need.type === donationType)
-      );
-    }
-
-    return filtered;
-  }, [searchQuery, activeCategory, donationType, institutes]);
-
-  // Update filtered institutes when filters change
-  useEffect(() => {
-    setFilteredInstitutes(filterInstitutes());
-  }, [filterInstitutes]);
+  // Deprecated legacy filtering (removed - now using API-driven AllInstitutes with filters)
 
   const handleInstituteClick = (institute: RecommendedInstitute) => {
     setSelectedInstitute(institute);
@@ -409,17 +378,31 @@ const BrowseDonate = () => {
   };
 
   const handlePaymentSuccess = (response: any) => {
-    // Close payment modal first
     setShowPaymentModal(false);
-
-    // Store payment ID from Razorpay response
     setCurrentDonation((prev) => ({
       ...prev,
       paymentId: response.razorpay_payment_id,
     }));
-
-    // Show success modal
-    setShowSuccess(true);
+    const amountToSend =
+      currentDonation?.type === "resource"
+        ? currentDonation?.totalAmount || 0
+        : currentDonation?.amount || 0;
+    const payload = {
+      donorName: user?.fullName || "Anonymous",
+      amount: amountToSend,
+      donationItem:
+        currentDonation?.type === "resource"
+          ? `Resources donated to ${currentDonation?.institute}`
+          : `Monetary donation to ${currentDonation?.institute}`,
+    };
+    axios
+      .post(`${config.apiBaseUrl}/api/donations`, payload)
+      .then(() => {
+        setShowSuccess(true);
+      })
+      .catch(() => {
+        setShowSuccess(true);
+      });
   };
 
   const handleRazorpayPayment = async (amount: number) => {
@@ -612,10 +595,104 @@ const BrowseDonate = () => {
         )}&donationItem=${encodeURIComponent(itemsString)}`
       );
       const data = await response.json();
-      if (data.success && data.recommendation.matchedInstitutes) {
-        setRecommendedInstitutes(data.recommendation.matchedInstitutes);
-        setShowDonationPrompt(false);
+      let matched: any[] = [];
+      if (data?.success) {
+        matched = Array.isArray(data.matchedInstitutes)
+          ? data.matchedInstitutes
+          : [];
       }
+
+      const normalizeCategory = (c?: string) =>
+        (c || "").toLowerCase().trim();
+      const targetCategory = normalizeCategory(selectedCategory);
+      const itemsLower = selectedItems.map((i) => i.toLowerCase());
+
+      const mapInstitute = (inst: any): RecommendedInstitute => ({
+        _id: inst._id,
+        name: inst.name || "Unknown",
+        email: inst.email || "",
+        phone: inst.phone || "",
+        address: inst.deliveryAddress || inst.address || "",
+        description: inst.description || "",
+        requirement: inst.itemName ? [inst.itemName] : [],
+        category: inst.category || "General",
+        itemName: inst.itemName,
+        quantity: inst.quantity,
+        urgency: inst.urgency,
+        beneficiaryCount: inst.beneficiaryCount,
+        previousDonations: !!inst.previousDonations,
+        createdAt: inst.createdAt,
+      });
+
+      const candidateMap = new Map<string, RecommendedInstitute>();
+      matched.forEach((m) => {
+        const mapped = mapInstitute(m);
+        if (mapped._id) candidateMap.set(mapped._id, mapped);
+      });
+      allInstitutes.forEach((a) => {
+        if (a._id && !candidateMap.has(a._id)) {
+          candidateMap.set(a._id, a);
+        }
+      });
+
+      const urgencyWeight = (u?: string) => {
+        const v = (u || "").toLowerCase();
+        if (v === "critical") return 1;
+        if (v === "high") return 0.8;
+        if (v === "medium") return 0.5;
+        if (v === "low") return 0.2;
+        return 0.3;
+      };
+      const containsAny = (text?: string) => {
+        const t = (text || "").toLowerCase();
+        return itemsLower.some((i) => t.includes(i)) ? 1 : 0;
+      };
+
+      const scored = Array.from(candidateMap.values())
+        .map((inst) => {
+          const catMatch =
+            targetCategory === "" ||
+            targetCategory === "all" ||
+            normalizeCategory(inst.category) === targetCategory
+              ? 1
+              : 0;
+          const itemMatch =
+            containsAny(inst.itemName) ||
+            containsAny(inst.description) ||
+            containsAny((inst.requirement || []).join(", "));
+          const score =
+            0.5 * catMatch +
+            0.3 * itemMatch +
+            0.2 * urgencyWeight(inst.urgency) +
+            (inst.previousDonations ? 0.1 : 0);
+          return { inst, score };
+        })
+        .filter((s) => s.score > 0.25)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 6)
+        .map((s) => s.inst);
+
+      if (scored.length === 0) {
+        const relaxed = Array.from(candidateMap.values())
+          .map((inst) => {
+            const itemMatch =
+              containsAny(inst.itemName) ||
+              containsAny(inst.description) ||
+              containsAny((inst.requirement || []).join(", "));
+            const score = 0.6 * itemMatch + 0.4 * urgencyWeight(inst.urgency);
+            return { inst, score };
+          })
+          .filter((s) => s.score > 0.1)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 6)
+          .map((s) => s.inst);
+        setRecommendedInfoMessage("No strong matches; showing closest alternatives");
+        setRecommendedInstitutes(relaxed);
+      } else {
+        setRecommendedInfoMessage(null);
+        setRecommendedInstitutes(scored);
+      }
+      setShowDonationPrompt(false);
     } catch (error) {
       console.error("Error fetching recommendations:", error);
     } finally {
@@ -715,6 +792,21 @@ const BrowseDonate = () => {
                   </button>
                 ))}
               </div>
+              <div className="mt-4 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedCategory) {
+                      setActiveCategory(selectedCategory);
+                    }
+                    setShowFilteredAll(true);
+                    setShowDonationPrompt(false);
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100"
+                >
+                  Browse All Matching Institutes
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -782,6 +874,12 @@ const BrowseDonate = () => {
     if (!selectedInstitute) return null;
 
     const handleDonate = async (amount: number) => {
+      setCurrentDonation({
+        institute: selectedInstitute.name,
+        amount,
+        type: "monetary",
+        date: new Date().toISOString(),
+      });
       const options: RazorpayOptions = {
         key: import.meta.env.VITE_RAZOR_PAY,
         amount: amount * 100, // Convert to paise
@@ -789,18 +887,8 @@ const BrowseDonate = () => {
         name: selectedInstitute.name,
         description: `Donation for ${selectedInstitute.name}`,
         handler: function (response) {
-          console.log(response);
-          // Handle successful payment
-          setShowSuccess(true);
+          handlePaymentSuccess(response);
           setShowInstituteModal(false);
-          setCurrentDonation({
-            institute: selectedInstitute.name,
-            amount: amount,
-            date: new Date().toISOString(),
-            transactionId: response.razorpay_payment_id,
-            donationType: "monetary",
-            paymentId: response.razorpay_payment_id,
-          });
         },
         prefill: {
           name: user?.fullName || "",
@@ -975,7 +1063,7 @@ const BrowseDonate = () => {
                 </div>
                 <div className="flex items-center gap-1">
                   <MapPin size={14} />
-                  <span>{institute.address.split(",")[0]}</span>
+                  <span>{institute.address?.split(",")[0]}</span>
                 </div>
               </div>
             </div>
@@ -987,6 +1075,96 @@ const BrowseDonate = () => {
               <Heart size={16} />
               Donate Now
             </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const AllInstitutesGrid = () => (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {pagedInstitutes.map((institute) => (
+        <div
+          key={institute._id}
+          className="bg-white rounded-2xl shadow-lg overflow-hidden border border-indigo-50 hover:shadow-xl transition-all duration-300 flex flex-col h-[400px]"
+        >
+          <div className="h-32 bg-gradient-to-r from-indigo-600 to-indigo-800 p-4 flex flex-col justify-end">
+            <h3 className="text-xl font-semibold text-white mb-2">
+              {institute.name}
+            </h3>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-white/20 text-white">
+                {institute.category || "General"}
+              </span>
+              {institute.previousDonations && (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-white">
+                  Previous Donor
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="p-6 flex-1 flex flex-col">
+            <p className="text-gray-600 text-sm mb-4 line-clamp-3 flex-1">
+              {institute.description}
+            </p>
+            <div className="flex items-center justify-between text-sm text-gray-500">
+              <div className="flex items-center gap-1">
+                <Users size={14} />
+                <span>{institute.beneficiaryCount || "N/A"} beneficiaries</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <MapPin size={14} />
+                <span>{institute.address?.split(",")[0]}</span>
+              </div>
+            </div>
+            <button
+              onClick={() => handleInstituteClick(institute)}
+              className="mt-4 w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
+            >
+              <Heart size={16} />
+              Donate Now
+            </button>
+          </div>
+        </div>
+      ))}
+      {pagedInstitutes.length === 0 && (
+        <div className="col-span-3 text-center text-gray-500 py-8">
+          No institutes found for the selected filters.
+        </div>
+      )}
+    </div>
+  );
+
+  const ImpactStoriesGrid = () => (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {impactStories.map((story: any) => (
+        <div
+          key={story._id}
+          className="bg-white rounded-2xl shadow-lg overflow-hidden border border-indigo-50 hover:shadow-xl transition-all duration-300 flex flex-col"
+        >
+          <div className="h-40 overflow-hidden">
+            <img
+              src={story.image}
+              alt={story.title}
+              className="w-full h-full object-cover"
+            />
+          </div>
+          <div className="p-6 flex-1 flex flex-col">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-lg font-semibold text-indigo-900">
+                {story.title}
+              </h3>
+              <span className="px-2 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700">
+                {story.category}
+              </span>
+            </div>
+            <p className="text-gray-600 text-sm flex-1">{story.description}</p>
+            <div className="mt-4">
+              <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2">
+                <Sparkles size={16} />
+                See How It Helped
+              </button>
+            </div>
           </div>
         </div>
       ))}
@@ -1005,6 +1183,50 @@ const BrowseDonate = () => {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  useEffect(() => {
+    const fetchAllInstitutes = async () => {
+      try {
+        const res = await axios.get(`${config.apiBaseUrl}/api/institutes`);
+        if (res.data?.success && Array.isArray(res.data.institutes)) {
+          const mapped: RecommendedInstitute[] = res.data.institutes.map((inst: any) => ({
+            _id: inst._id,
+            name: inst.name || "Unknown",
+            email: inst.email || "",
+            phone: inst.phone || "",
+            address: inst.deliveryAddress || inst.address || "",
+            description: inst.description || "",
+            requirement: inst.itemName ? [inst.itemName] : [],
+            category: inst.category || "General",
+            itemName: inst.itemName,
+            quantity: inst.quantity,
+            urgency: inst.urgency,
+            beneficiaryCount: inst.beneficiaryCount,
+            previousDonations: !!inst.previousDonations,
+            createdAt: inst.createdAt,
+          }));
+          setAllInstitutes(mapped);
+        }
+      } catch (e) {
+        console.error("Error fetching institutes:", e);
+      }
+    };
+    fetchAllInstitutes();
+  }, []);
+
+  useEffect(() => {
+    const fetchImpactStories = async () => {
+      try {
+        const res = await axios.get(`${config.apiBaseUrl}/api/impact-stories`);
+        if (res.data?.success && Array.isArray(res.data.stories)) {
+          setImpactStories(res.data.stories);
+        }
+      } catch (e) {
+        console.error("Error fetching impact stories:", e);
+      }
+    };
+    fetchImpactStories();
+  }, []);
+
   return (
     <div className="container mx-auto px-4 py-8">
       {showDonationPrompt && <DonationPromptModal />}
@@ -1016,6 +1238,11 @@ const BrowseDonate = () => {
             <h1 className="text-2xl font-bold text-indigo-900">
               Recommended Institutes for Your Donation
             </h1>
+            {recommendedInfoMessage && (
+              <span className="text-sm text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1 rounded-lg">
+                {recommendedInfoMessage}
+              </span>
+            )}
             <button
               onClick={() => setShowDonationPrompt(true)}
               className="px-4 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100"
@@ -1024,6 +1251,109 @@ const BrowseDonate = () => {
             </button>
           </div>
           <RecommendedInstitutesGrid />
+          <div className="mt-12">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold text-indigo-900">
+                Browse Institutes
+              </h2>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    setShowFilteredAll((v) => !v);
+                    if (!showFilteredAll && selectedCategory) {
+                      setActiveCategory(selectedCategory);
+                    }
+                    setPageIndex(0);
+                  }}
+                  className={`px-3 py-2 rounded-lg text-sm ${
+                    showFilteredAll
+                      ? "bg-indigo-600 text-white"
+                      : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                  }`}
+                  title="Toggle filtering All Institutes by your selection"
+                >
+                  {showFilteredAll ? "Showing Matching Institutes" : "Show Matching Institutes"}
+                </button>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search by name, description, address"
+                  className="px-3 py-2 border rounded-lg text-sm w-64"
+                />
+                <select
+                  value={activeCategory}
+                  onChange={(e) => setActiveCategory(e.target.value)}
+                  className="px-3 py-2 border rounded-lg text-sm"
+                >
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={sortBy}
+                  onChange={(e) => {
+                    setSortBy(e.target.value);
+                    setPageIndex(0);
+                  }}
+                  className="px-3 py-2 border rounded-lg text-sm"
+                >
+                  <option value="recent">Recent</option>
+                  <option value="beneficiaries">Beneficiaries</option>
+                  <option value="urgency">Urgency</option>
+                  <option value="name">Name</option>
+                </select>
+                <span className="text-sm text-gray-600">
+                  {displayedAllInstitutes.length} results
+                </span>
+              </div>
+            </div>
+            <AllInstitutesGrid />
+            <div className="flex items-center justify-center gap-2 mt-6">
+              <button
+                onClick={() => setPageIndex((p) => Math.max(p - 1, 0))}
+                className="px-3 py-1 border rounded-md text-sm"
+                disabled={pageIndex === 0}
+              >
+                Prev
+              </button>
+              <span className="text-sm text-gray-700">
+                Page {pageIndex + 1} of {totalPages}
+              </span>
+              <button
+                onClick={() =>
+                  setPageIndex((p) => Math.min(p + 1, totalPages - 1))
+                }
+                className="px-3 py-1 border rounded-md text-sm"
+                disabled={pageIndex >= totalPages - 1}
+              >
+                Next
+              </button>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPageIndex(0);
+                }}
+                className="ml-4 px-3 py-1 border rounded-md text-sm"
+              >
+                <option value={6}>6 / page</option>
+                <option value={9}>9 / page</option>
+                <option value={12}>12 / page</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="mt-12">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold text-indigo-900">
+                Impact Stories
+              </h2>
+            </div>
+            <ImpactStoriesGrid />
+          </div>
         </>
       )}
 

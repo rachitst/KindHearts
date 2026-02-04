@@ -15,8 +15,10 @@ import {
   Package,
   Clock,
 } from "lucide-react";
-import { addNewRequest } from "../data/mockData";
+// import { addNewRequest } from "../data/mockData";
 import { config } from "../../../../config/env";
+import { useUser } from "@clerk/clerk-react";
+import { useEffect } from "react";
 
 type RequestCategory =
   | "Food"
@@ -59,8 +61,8 @@ interface RequestForm {
   // Identity Verification
   identityType: string;
   identityNumber: string;
-  identityProof: File | null;
-  institutionLetter: File | null;
+  identityProof: string | null;
+  institutionLetter: string | null;
 
   // Additional Details
   purpose: string;
@@ -133,6 +135,7 @@ const DEMO_DATA: RequestForm = {
 };
 
 const RaiseRequest = () => {
+  const { user } = useUser();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [showUploadConfirm, setShowUploadConfirm] = useState(false);
@@ -198,6 +201,62 @@ const RaiseRequest = () => {
     type: "success" | "error";
   } | null>(null);
 
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!user?.primaryEmailAddress?.emailAddress) return;
+      
+      try {
+        const response = await fetch(`${config.apiBaseUrl}${config.apiEndpoints.instituteProfile}/${user.primaryEmailAddress.emailAddress}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.profile) {
+            const profile = data.profile;
+            setFormData(prev => ({
+              ...prev,
+              name: profile.name || "",
+              email: profile.email || user.primaryEmailAddress?.emailAddress || "",
+              phone: profile.phone || "",
+              address: profile.address || "",
+              description: profile.description || "",
+              requesterName: profile.requesterName || "",
+              designation: profile.designation || "",
+              department: profile.department || "",
+              contactNumber: profile.contactNumber || "",
+              alternateContact: profile.alternateContact || "",
+              institutionId: profile.institutionId || "",
+              deliveryAddress: profile.deliveryAddress || "",
+              landmark: profile.landmark || "",
+              city: profile.city || "",
+              state: profile.state || "",
+              pincode: profile.pincode || "",
+              preferredDeliveryTime: profile.preferredDeliveryTime || "",
+              identityType: profile.identityType || "",
+              identityNumber: profile.identityNumber || "",
+              identityProof: profile.identityProof || null,
+              institutionLetter: profile.institutionLetter || null
+            }));
+            
+            setUploadedFiles(prev => ({
+                identityProof: profile.identityProof ? { name: "Uploaded Identity Proof", url: profile.identityProof } : prev.identityProof,
+                institutionLetter: profile.institutionLetter ? { name: "Uploaded Institution Letter", url: profile.institutionLetter } : prev.institutionLetter
+            }));
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching profile:", error);
+        // Fallback to user email if profile fetch fails
+        if (user.primaryEmailAddress?.emailAddress) {
+          setFormData((prev) => ({
+            ...prev,
+            email: user.primaryEmailAddress!.emailAddress,
+          }));
+        }
+      }
+    };
+    
+    fetchProfile();
+  }, [user]);
+
   const handleChange = (
     e: React.ChangeEvent<
       HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
@@ -217,7 +276,10 @@ const RaiseRequest = () => {
     fieldName: string
   ) => {
     const file = e.target.files?.[0] || null;
-    setFormData((prev) => ({ ...prev, [fieldName]: file }));
+    if (file) {
+      setFileToConfirm({ file, type: fieldName as "identityProof" | "institutionLetter" });
+      setShowUploadConfirm(true);
+    }
   };
 
   const handleFileConfirmation = (
@@ -231,16 +293,34 @@ const RaiseRequest = () => {
     }
   };
 
-  const confirmFileUpload = () => {
-    if (fileToConfirm) {
-      const { file, type } = fileToConfirm;
-      // Create temporary URL for preview
-      const fileUrl = URL.createObjectURL(file);
+  const confirmFileUpload = async () => {
+    if (!fileToConfirm) return;
+    const { file, type } = fileToConfirm;
+    try {
+      const uploadForm = new FormData();
+      uploadForm.append("file", file);
+      const res = await fetch(`${config.apiBaseUrl}/api/uploads`, {
+        method: "POST",
+        body: uploadForm,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "File upload failed");
+      }
+      const data = await res.json();
+      const absoluteUrl = `${config.apiBaseUrl}${data.fileUrl}`;
       setUploadedFiles((prev) => ({
         ...prev,
-        [type]: { name: file.name, url: fileUrl },
+        [type]: { name: file.name, url: absoluteUrl },
       }));
-      setFormData((prev) => ({ ...prev, [type]: file }));
+      setFormData((prev) => ({ ...prev, [type]: absoluteUrl }));
+      setAlert({ message: "File uploaded successfully", type: "success" });
+    } catch (error: any) {
+      setAlert({
+        message: error.message || "File upload failed",
+        type: "error",
+      });
+    } finally {
       setShowUploadConfirm(false);
       setFileToConfirm(null);
     }
@@ -299,27 +379,19 @@ const RaiseRequest = () => {
     }
 
     try {
-      const formDataToSend = new FormData();
-
-      // Append all the form fields to FormData
+      const payload: Record<string, any> = {};
       Object.entries(formData).forEach(([key, value]) => {
-        if (key === "identityProof" || key === "institutionLetter") {
-          if (value instanceof File) {
-            formDataToSend.append(key, value);
-          }
-        } else if (typeof value === "boolean") {
-          formDataToSend.append(key, value.toString());
-        } else if (value !== null && value !== undefined) {
-          formDataToSend.append(key, value.toString());
+        if (value !== null && value !== undefined) {
+          payload[key] = value;
         }
       });
 
-      // Make the API call using environment variable - changed to institutes endpoint
       const response = await fetch(
-        `${config.apiBaseUrl}${config.apiEndpoints.institutes}`,
+        `${config.apiBaseUrl}/api/institutes`,
         {
           method: "POST",
-          body: formDataToSend,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
         }
       );
 
@@ -441,6 +513,107 @@ const RaiseRequest = () => {
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Institution Details Section */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="px-6 py-4 bg-[#100e92] text-white border-b flex items-center justify-between">
+              <h2 className="text-lg font-medium">Institution Details</h2>
+              <Building size={20} />
+            </div>
+            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Institution Name <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Building className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    type="text"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleChange}
+                    required
+                    className="pl-10 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Enter institution name"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Institution Email <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Mail className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    type="email"
+                    name="email"
+                    value={formData.email}
+                    readOnly
+                    className="pl-10 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 text-gray-500 cursor-not-allowed focus:ring-0 focus:border-gray-300"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Institution Phone <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Phone className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    type="tel"
+                    name="phone"
+                    value={formData.phone}
+                    onChange={handleChange}
+                    required
+                    className="pl-10 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Enter institution phone"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Institution Address <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <MapPin className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    type="text"
+                    name="address"
+                    value={formData.address}
+                    onChange={handleChange}
+                    required
+                    className="pl-10 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Enter institution address"
+                  />
+                </div>
+              </div>
+
+              <div className="col-span-1 md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description
+                </label>
+                <textarea
+                  name="description"
+                  value={formData.description}
+                  onChange={handleChange}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Enter institution description"
+                />
+              </div>
+            </div>
+          </div>
+
           <div className="bg-white rounded-lg shadow-sm border border-gray-200">
             <div className="px-6 py-4 bg-[#100e92] text-white border-b flex items-center justify-between">
               <h2 className="text-lg font-medium">Basic Information</h2>
@@ -667,9 +840,8 @@ const RaiseRequest = () => {
                     type="email"
                     name="email"
                     value={formData.email}
-                    onChange={handleChange}
-                    required
-                    className="pl-10 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    readOnly
+                    className="pl-10 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 text-gray-500 cursor-not-allowed focus:ring-0 focus:border-gray-300"
                   />
                 </div>
               </div>

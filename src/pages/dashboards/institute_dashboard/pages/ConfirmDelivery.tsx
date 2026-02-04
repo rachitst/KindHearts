@@ -1,7 +1,10 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Search, CheckCircle2, X, Camera, Upload, AlertCircle, Check, Star, Send, Calendar } from 'lucide-react';
 import StatusBadge from '../components/StatusBadge';
 import UrgencyBadge from '../components/UrgencyBadge';
+import { useAuth } from '../context/AuthContext';
+import { config } from '../../../../config/env';
+import axios from 'axios';
 
 interface DeliveryItem {
   id: string;
@@ -23,6 +26,7 @@ interface FeedbackForm {
 }
 
 const ConfirmDelivery = () => {
+  const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedItem, setSelectedItem] = useState<DeliveryItem | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -44,51 +48,42 @@ const ConfirmDelivery = () => {
     wouldRecommend: true
   });
   const [showFeedbackSuccess, setShowFeedbackSuccess] = useState(false);
+  const [deliveryItems, setDeliveryItems] = useState<DeliveryItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Extended mock data
-  const deliveryItems: DeliveryItem[] = [
-    {
-      id: "DEL-001",
-      itemName: "School Supplies Bundle",
-      quantity: 50,
-      status: "Out for Delivery",
-      expectedDate: "2024-03-20",
-      shopName: "Educational Supplies Co.",
-      category: "Education Material"
-    },
-    {
-      id: "DEL-002",
-      itemName: "First Aid Kits",
-      quantity: 25,
-      status: "Out for Delivery",
-      expectedDate: "2024-03-21",
-      shopName: "MediCare Pharmacy",
-      category: "Medical Supplies"
-    },
-    {
-      id: "DEL-003",
-      itemName: "Rice and Pulses",
-      quantity: 100,
-      status: "Out for Delivery",
-      expectedDate: "2024-03-20",
-      shopName: "Fresh Grocers",
-      category: "Food"
-    },
-    {
-      id: "DEL-004",
-      itemName: "Laboratory Equipment",
-      quantity: 10,
-      status: "Out for Delivery",
-      expectedDate: "2024-03-22",
-      shopName: "Science Supplies Ltd",
-      category: "Education Material"
-    }
-  ];
+  useEffect(() => {
+    const fetchRequests = async () => {
+      if (!user?.email) return;
+      try {
+        const response = await axios.get(`${config.apiBaseUrl}/api/institutes`, {
+          params: { email: user.email }
+        });
+        if (response.data.success) {
+          const mappedItems = response.data.institutes.map((req: any) => ({
+            id: req._id,
+            itemName: req.itemName,
+            quantity: req.quantity,
+            status: req.status,
+            expectedDate: req.expectedDeliveryDate ? new Date(req.expectedDeliveryDate).toISOString().split('T')[0] : 'N/A',
+            shopName: req.shopkeeperId ? 'Assigned Shop' : 'Pending Assignment', // Backend might not populate shop name yet
+            category: req.category
+          }));
+          // Filter for relevant statuses if needed, or show all
+          setDeliveryItems(mappedItems);
+        }
+      } catch (err) {
+        console.error("Error fetching requests:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchRequests();
+  }, [user]);
 
   const filteredItems = deliveryItems.filter(item => 
-    item.itemName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.shopName.toLowerCase().includes(searchTerm.toLowerCase())
+    (item.itemName?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+    (item.id?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+    (item.shopName?.toLowerCase() || '').includes(searchTerm.toLowerCase())
   );
 
   const handleConfirmDelivery = async (item: DeliveryItem) => {
@@ -97,6 +92,38 @@ const ConfirmDelivery = () => {
     setError(null);
     setReceipt(null);
   };
+
+  const submitConfirmation = async () => {
+    if (!selectedItem) return;
+    setIsSubmitting(true);
+    try {
+      // Call API to update status
+      await axios.put(`${config.apiBaseUrl}/api/institutes/${selectedItem.id}/status`, {
+        status: 'Delivered'
+      });
+      
+      setIsConfirmed(true);
+      setConfirmationTime(new Date().toLocaleString());
+      setConfirmedDeliveries(prev => [...prev, selectedItem.id]);
+      
+      // Update local state
+      setDeliveryItems(prev => prev.map(item => 
+        item.id === selectedItem.id ? { ...item, status: 'Delivered' } : item
+      ));
+
+      setTimeout(() => {
+        setShowModal(false);
+        setIsConfirmed(false);
+        setShowFeedbackPrompt(true);
+      }, 2000);
+    } catch (err) {
+      console.error("Error confirming delivery:", err);
+      setError("Failed to confirm delivery. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -116,36 +143,33 @@ const ConfirmDelivery = () => {
       return;
     }
     
-    setIsSubmitting(true);
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      setConfirmedDeliveries(prev => [...prev, selectedItem!.id]);
-      setConfirmationTime(new Date().toLocaleString());
-      setIsConfirmed(true);
-      setShowModal(false); // Close delivery confirmation modal
-      setShowFeedbackPrompt(true); // Show feedback prompt
-    } catch (err) {
-      setError('Failed to confirm delivery. Please try again.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+    if (!selectedItem) return;
 
-  const handleSubmitDelivery = async () => {
-    if (!receipt) {
-      setError('Please upload the delivery receipt');
-      return;
-    }
-    
     setIsSubmitting(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      setConfirmedDeliveries(prev => [...prev, selectedItem!.id]);
-      setConfirmationTime(new Date().toLocaleString());
+      // Call API to update status
+      await axios.put(`${config.apiBaseUrl}/api/institutes/${selectedItem.id}/status`, {
+        status: 'Delivered'
+      });
+      
       setIsConfirmed(true);
-      setIsSubmitting(false);
+      setConfirmationTime(new Date().toLocaleString());
+      setConfirmedDeliveries(prev => [...prev, selectedItem.id]);
+      
+      // Update local state
+      setDeliveryItems(prev => prev.map(item => 
+        item.id === selectedItem.id ? { ...item, status: 'Delivered' } : item
+      ));
+
+      // Wait a bit before closing modal
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      setShowModal(false);
+      setIsConfirmed(false);
+      setShowFeedbackPrompt(true);
     } catch (err) {
-      setError('Failed to confirm delivery. Please try again.');
+      console.error("Error confirming delivery:", err);
+      setError("Failed to confirm delivery. Please try again.");
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -210,43 +234,51 @@ const ConfirmDelivery = () => {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {filteredItems.map((item) => (
-              <tr key={item.id}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {item.id}
-                </td>
-                <td className="px-6 py-4">
-                  <div>
-                    <div className="text-sm font-medium text-gray-900">{item.itemName}</div>
-                    <div className="text-sm text-gray-500">Qty: {item.quantity}</div>
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {item.shopName}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {item.expectedDate}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <StatusBadge status={item.status} />
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {confirmedDeliveries.includes(item.id) ? (
-                    <span className="text-green-600 font-medium flex items-center gap-1">
-                      <CheckCircle2 size={16} />
-                      Delivery Confirmed
-                    </span>
-                  ) : (
-                    <button
-                      onClick={() => handleConfirmDelivery(item)}
-                      className="text-[#100e92] hover:text-[#0d0b7a] font-medium"
-                    >
-                      Confirm Delivery
-                    </button>
-                  )}
+            {filteredItems.length > 0 ? (
+              filteredItems.map((item) => (
+                <tr key={item.id}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {item.id}
+                  </td>
+                  <td className="px-6 py-4">
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">{item.itemName}</div>
+                      <div className="text-sm text-gray-500">Qty: {item.quantity}</div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {item.shopName}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {item.expectedDate}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <StatusBadge status={item.status} />
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {confirmedDeliveries.includes(item.id) ? (
+                      <span className="text-green-600 font-medium flex items-center gap-1">
+                        <CheckCircle2 size={16} />
+                        Delivery Confirmed
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => handleConfirmDelivery(item)}
+                        className="text-[#100e92] hover:text-[#0d0b7a] font-medium"
+                      >
+                        Confirm Delivery
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={6} className="px-6 py-10 text-center text-gray-500">
+                  No pending deliveries found.
                 </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>

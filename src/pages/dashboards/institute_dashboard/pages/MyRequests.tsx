@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { mockRequests, getAllUserRequests } from '../data/mockData';
+import axios from 'axios';
+import { config } from '../../../../config/env';
+import { useAuth } from '../context/AuthContext';
 import StatusBadge from '../components/StatusBadge';
 import UrgencyBadge from '../components/UrgencyBadge';
 import { Search, Filter, ExternalLink, X, Package, Clock, Store, MessageSquare, Star } from 'lucide-react';
 import type { DonationRequest } from '../data/mockData';
 
 const MyRequests = () => {
+  const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -15,12 +18,38 @@ const MyRequests = () => {
 
   useEffect(() => {
     // Load all requests when component mounts
-    const loadRequests = () => {
-      const allRequests = getAllUserRequests();
-      setRequests(allRequests);
+    const loadRequests = async () => {
+      const userEmail = user?.email || user?.basicInfo?.email;
+      if (userEmail) {
+        try {
+          // Use the main endpoint with email filter instead of my-requests
+          const response = await axios.get(`${config.apiBaseUrl}/api/institutes`, {
+            params: { email: userEmail }
+          });
+          if (response.data.success) {
+             const mappedRequests = response.data.institutes.map((req: any) => ({
+              id: req._id,
+              itemName: req.itemName,
+              category: req.category,
+              quantity: req.quantity,
+              urgencyLevel: req.urgency,
+              status: req.status,
+              createdAt: req.createdAt,
+              updatedAt: req.updatedAt,
+              shopAssigned: req.shopAssigned,
+              specifications: req.specifications,
+              deliveryDate: req.expectedDeliveryDate,
+              ...req
+            }));
+            setRequests(mappedRequests);
+          }
+        } catch (error) {
+          console.error("Error fetching my requests:", error);
+        }
+      }
     };
     loadRequests();
-  }, []);
+  }, [user]);
 
   const filteredRequests = requests.filter(request => {
     const matchesSearch = request.itemName.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -39,28 +68,6 @@ const MyRequests = () => {
   const handleShopClick = (shop: any) => {
     // You can add shop details modal here if needed
     console.log('Shop clicked:', shop);
-  };
-
-  const handleAutoFill = () => {
-    // Sample data for auto-filling
-    const sampleData = {
-      itemName: "School Supplies Bundle",
-      category: "Education Material",
-      quantity: 50,
-      urgencyLevel: "Medium",
-      specifications: "Notebooks, pens, pencils, and other basic stationery items",
-      expectedDeliveryDate: new Date().toISOString().split('T')[0], // Today's date
-      requesterName: "John Doe",
-      requesterPhone: "1234567890",
-      requesterEmail: "john.doe@example.com",
-      additionalNotes: "Please ensure all items are of standard quality"
-    };
-
-    // Update form data with sample data
-    setFormData(prevData => ({
-      ...prevData,
-      ...sampleData
-    }));
   };
 
   return (
@@ -111,13 +118,6 @@ const MyRequests = () => {
               </select>
             </div>
             
-            {/* Add Auto Fill Button */}
-            <button
-              onClick={handleAutoFill}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-[#100e92] hover:bg-[#0d0940] transition-colors"
-            >
-              <span>Auto Fill Form</span>
-            </button>
           </div>
         </div>
         

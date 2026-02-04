@@ -1,9 +1,9 @@
 import { useEffect, useState, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../store';
-import { fetchOrders, updateOrderStatus, setOrders } from '../store/slices/ordersSlice';
+import { fetchOrders, updateOrderStatus, setOrders, createOrder } from '../store/slices/ordersSlice';
 import { 
-  ShoppingBag, Package, Clock, AlertCircle, 
+  ShoppingBag, Package, 
   Search, Filter, X as XIcon, CheckCircle, Bell, Truck, DollarSign, User 
 } from 'lucide-react';
 import PageHeader from '../components/Layout/PageHeader';
@@ -11,12 +11,12 @@ import PageTransition from '../components/Layout/PageTransition';
 import { toast } from 'react-toastify';
 import { toast as hotToast } from 'react-hot-toast';
 import { Order } from '../types';
-import { ThunkDispatch } from 'redux-thunk';
-import { AnyAction } from 'redux';
+import type { AppDispatch } from '../store';
 import { navigate } from '../store/slices/navigationSlice';
 
+
 const IncomingOrders = () => {
-  const dispatch = useDispatch<ThunkDispatch<RootState, unknown, AnyAction>>();
+  const dispatch = useDispatch<AppDispatch>();
   const { orders, loading } = useSelector((state: RootState) => state.orders);
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -27,7 +27,6 @@ const IncomingOrders = () => {
     minAmount: '',
     maxAmount: ''
   });
-  const [filterStatus, setFilterStatus] = useState<string | null>(null);
   const previousOrdersRef = useRef<Order[]>([]);
   const notificationSound = useRef(new Audio('/notification.mp3'));
   
@@ -244,19 +243,13 @@ const IncomingOrders = () => {
     }
   ];
 
-  const addTestOrder = () => {
-    const newOrder: Order = {
-      id: `PO-${Math.floor(Math.random() * 1000)}`,
-      instituteId: `INST${Math.floor(Math.random() * 1000)}`,
-      instituteName: 'Test Institute',
+  const addTestOrder = async () => {
+    const newOrderData: Partial<Order> = {
       items: [
         { name: 'Test Item 1', quantity: 10, price: 100 },
         { name: 'Test Item 2', quantity: 5, price: 200 }
       ],
       totalAmount: 2000,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
       deliveryAddress: 'Test Address',
       contactPerson: 'Test Contact',
       contactNumber: '555-TEST',
@@ -264,12 +257,12 @@ const IncomingOrders = () => {
       notes: Math.random() > 0.5 ? 'urgent delivery needed' : undefined
     };
 
-    const currentOrders = [...orders];
-    currentOrders.push(newOrder);
-    dispatch(setOrders(currentOrders));
+    // @ts-ignore
+    const success = await dispatch(createOrder(newOrderData));
     
-    notificationSound.current.play().catch(console.error);
-    toast.success('New test order added!');
+    if (success) {
+      toast.success('New test order added!');
+    }
   };
 
   const headerActions = (
@@ -308,7 +301,7 @@ const IncomingOrders = () => {
     </div>
   );
 
-  const handleOrderClick = (e: React.MouseEvent, orderId: string) => {
+  const handleOrderClick = (e: React.MouseEvent) => {
     e.preventDefault();
     dispatch(navigate('order-processing'));
   };
@@ -462,7 +455,7 @@ const IncomingOrders = () => {
                   <a
                     key={order.id}
                     href={`/order/${order.id}`}
-                    onClick={(e) => handleOrderClick(e, order.id)}
+                    onClick={(e) => handleOrderClick(e)}
                     className="block hover:bg-gray-50 transition-colors duration-200"
                   >
                     <div className="border border-purple-100 rounded-xl p-6 hover:bg-purple-50/50 

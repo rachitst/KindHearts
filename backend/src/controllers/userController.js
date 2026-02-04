@@ -79,7 +79,11 @@ const getUserProfile = async (req, res) => {
 
 const getUsers = async (req, res) => {
   try {
-    const users = await User.find().select("-password").sort({ createdAt: -1 });
+    const filter = {};
+    if (req.query.role) {
+      filter.role = req.query.role;
+    }
+    const users = await User.find(filter).select("-password").sort({ createdAt: -1 });
     res.status(200).json({ success: true, users });
   } catch (error) {
     console.error("Error fetching users:", error);

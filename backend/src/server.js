@@ -19,6 +19,7 @@ app.use("/uploads", express.static("uploads"));
 
 app.use("/api/donations", require("./routes/donationRoutes"));
 app.use("/api/institutes", require("./routes/instituteRoutes"));
+app.use("/api/institute-profile", require("./routes/instituteProfileRoutes"));
 app.use("/api/shops", require("./routes/shopRoutes"));
 app.use("/api/users", require("./routes/userRoutes"));
 app.use("/api/llm", require("./routes/llmRoutes"));
@@ -26,6 +27,11 @@ app.use("/api/batch", require("./routes/batchRoutes"));
 app.use("/api/admin", require("./routes/adminRoutes"));
 app.use("/api/uploads", require("./routes/uploadRoutes"));
 app.use("/api/orders", require("./routes/orderRoutes"));
+app.use("/api/campaigns", require("./routes/campaignRoutes"));
+app.use("/api/impact-stories", require("./routes/impactRoutes"));
+app.use("/api/feedback", require("./routes/feedbackRoutes"));
+app.use("/api/recurring-donations", require("./routes/recurringDonationRoutes"));
+
 
 app.get("/", (req, res) => {
   res.send("Donation Platform API is running...");

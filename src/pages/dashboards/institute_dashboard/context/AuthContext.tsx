@@ -1,4 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useUser } from '@clerk/clerk-react';
+import axios from 'axios';
+import { config } from '../../../../config/env';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -23,33 +26,42 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
   setIsAuthenticated 
 }) => {
   const [user, setUser] = useState<any | null>(null);
+  const { user: clerkUser, isLoaded } = useUser();
 
   useEffect(() => {
-    const isAuth = localStorage.getItem('isAuthenticated');
-    const instituteData = localStorage.getItem('institute_data');
-    if (isAuth === 'true' && instituteData) {
-      const data = JSON.parse(instituteData);
-      setUser(data);
-      setIsAuthenticated(true);
-      setCurrentPage('dashboard');
-    } else if (!isAuth) {
-      setCurrentPage('register');
-    }
-  }, [setCurrentPage, setIsAuthenticated]);
+    const fetchInstituteProfile = async () => {
+      if (!isLoaded) return;
+      
+      if (clerkUser?.primaryEmailAddress?.emailAddress) {
+        try {
+          const response = await axios.get(`${config.apiBaseUrl}${config.apiEndpoints.instituteProfile}/${clerkUser.primaryEmailAddress.emailAddress}`);
+          if (response.data.success && response.data.profile) {
+             const institute = response.data.profile;
+             setUser(institute);
+             setIsAuthenticated(true);
+             setCurrentPage('dashboard');
+          } else {
+             // Not registered as institute yet
+             setCurrentPage('register');
+          }
+        } catch (err) {
+          console.error("Error fetching institute profile:", err);
+          setCurrentPage('register');
+        }
+      }
+    };
+    fetchInstituteProfile();
+  }, [isLoaded, clerkUser, setCurrentPage, setIsAuthenticated]);
 
   const registerAndLogin = (instituteData: any) => {
-    localStorage.setItem('institute_data', JSON.stringify(instituteData));
     setUser(instituteData);
     setIsAuthenticated(true);
-    localStorage.setItem('isAuthenticated', 'true');
     setCurrentPage('dashboard');
   };
 
   const logout = () => {
     setUser(null);
     setIsAuthenticated(false);
-    localStorage.removeItem('isAuthenticated');
-    localStorage.removeItem('institute_data');
     setCurrentPage('register');
   };
 

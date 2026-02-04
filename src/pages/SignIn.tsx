@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { SignIn as ClerkSignIn, useUser } from '@clerk/clerk-react';
 import { useNavigate } from 'react-router-dom';
 import { Heart, ShieldCheck, Clock, Users } from 'lucide-react';
+import axios from 'axios';
 import { storage } from '../utils/storage';
 
 const SignIn = () => {
@@ -12,20 +13,91 @@ const SignIn = () => {
     if (user?.primaryEmailAddress?.emailAddress) {
       const email = user.primaryEmailAddress.emailAddress;
       
-      // Get role from email_role_map in localStorage
-      const emailRoleMap = JSON.parse(localStorage.getItem('email_role_map') || '{}');
-      const userRole = emailRoleMap[email];
+      // 1. Admin Check (Priority)
+      if (email === 'admin@hopebridge.com') {
+         console.log('Admin login detected');
+         localStorage.setItem('adminAuth', 'true');
+         navigate('/admin/dashboard');
+         return;
+      }
 
-      if (userRole) {
-        console.log('Found role for user:', { email, role: userRole });
-        // Navigate to the appropriate dashboard
-        navigate(`/dashboard/${userRole}`);
-      } else {
-        // If no role found, redirect to role selection
-        navigate('/dashboard');
+      // 2. Metadata Check (Clerk)
+      const metadataRole = user.publicMetadata?.role || user.unsafeMetadata?.role;
+      if (metadataRole) {
+         console.log('Role found in metadata:', metadataRole);
+         navigate(`/dashboard/${metadataRole}`);
+         return;
+      }
+      
+      try {
+        const response = await axios.get(`http://localhost:5000/api/users?email=${email}`);
+        
+        if (response.data.success && response.data.users.length > 0) {
+          const backendUser = response.data.users[0];
+          const role = backendUser.role;
+          
+          console.log('Found role for user from backend:', { email, role });
+          
+          // Sync with Clerk metadata if possible (client-side unsafe update)
+          try {
+             await user.update({
+                unsafeMetadata: { role: role }
+             });
+          } catch (e) {
+             console.error("Failed to sync metadata", e);
+          }
+
+          // If user is a shopkeeper, try to find their shop
+          if (role === 'shopkeeper') {
+             try {
+               // Use email for more reliable lookup
+               const shopResponse = await axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/shops?email=${backendUser.email}`);
+               let shopId = 'unknown';
+               if (shopResponse.data.success && shopResponse.data.shops.length > 0) {
+                   shopId = shopResponse.data.shops[0]._id;
+               }
+               
+               const shopkeeperUser = {
+                   id: backendUser._id,
+                   name: backendUser.name,
+                   email: backendUser.email,
+                   role: 'shopkeeper',
+                   shopId: shopId
+               };
+               localStorage.setItem('user', JSON.stringify(shopkeeperUser));
+             } catch (err) {
+               console.error("Error fetching shop info:", err);
+               // Still set user in localStorage even if shop fetch fails, so they can reach the portal
+               const shopkeeperUser = {
+                   id: backendUser._id,
+                   name: backendUser.name,
+                   email: backendUser.email,
+                   role: 'shopkeeper',
+                   shopId: 'unknown'
+               };
+               localStorage.setItem('user', JSON.stringify(shopkeeperUser));
+             }
+          } else if (role === 'institute') {
+             // No local storage needed anymore for institute, managed by AuthContext
+          }
+
+          navigate(`/dashboard/${role}`);
+        } else {
+           // Fallback if user not found in backend -> Role Selection
+           navigate('/dashboard');
+        }
+      } catch (error) {
+          console.error("Error fetching user role:", error);
+          navigate('/dashboard');
       }
     }
   };
+
+  useEffect(() => {
+    if (user) {
+      handleSignInComplete();
+    }
+  }, [user, navigate]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-rose-50 to-slate-50">
@@ -116,7 +188,6 @@ const SignIn = () => {
                 }}
                 redirectUrl="/dashboard"
                 afterSignInUrl="/dashboard"
-                onSignInComplete={handleSignInComplete}
               />
             </div>
           </div>

@@ -7,11 +7,19 @@ const InstituteSchema = new mongoose.Schema(
     phone: { type: String },
     address: { type: String },
     description: { type: String },
+    image: { type: String },
 
+    instituteType: { type: String }, // Added to store 'Private', 'Public', etc.
     category: { type: String },
     itemName: { type: String },
+    type: { type: String, enum: ["monetary", "resource"], default: "resource" },
     quantity: { type: Number },
-    urgency: { type: String, enum: ["Low", "Medium", "High"] },
+    urgency: { type: String, enum: ["Low", "Medium", "High", "Critical"] },
+    status: { 
+      type: String, 
+      enum: ["Pending", "Processing", "Delivered", "Completed", "Cancelled"], 
+      default: "Pending" 
+    },
     specifications: { type: String },
     expectedDeliveryDate: { type: Date },
 

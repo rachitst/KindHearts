@@ -1,27 +1,60 @@
-import React, { useState } from 'react';
-import { mockDonationRequests } from '../data/mockData';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import { config } from '../../../../config/env';
 import { DonationRequest } from '../types';
 import RequestTable from '../components/RequestMonitoring/RequestTable';
 import Header from '../components/Header';
-import Sidebar from '../components/Sidebar';
-import { X, Eye, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 const RequestMonitoringPage: React.FC = () => {
   const [selectedRequest, setSelectedRequest] = useState<DonationRequest | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [requests, setRequests] = useState(mockDonationRequests);
+  const [requests, setRequests] = useState<DonationRequest[]>([]);
+
+  useEffect(() => {
+    fetchRequests();
+  }, []);
+
+  const fetchRequests = async () => {
+    try {
+      const response = await axios.get(`${config.apiBaseUrl}/api/admin/requests`);
+      if (response.data.success) {
+        // Map backend requests to frontend DonationRequest type
+        const mappedRequests = response.data.requests.map((req: any) => ({
+          id: req._id,
+          instituteName: req.requesterName || req.name || 'Unknown Institute',
+          items: [{ 
+            name: req.itemName, 
+            quantity: req.quantity,
+            estimatedCost: req.estimatedCost || 0 // Ensure estimatedCost is mapped
+          }],
+          status: req.status ? req.status.toLowerCase() : 'pending',
+          urgency: req.urgency,
+          createdAt: req.createdAt,
+          location: req.deliveryAddress || 'Unknown',
+          description: req.description || '',
+          ...req
+        }));
+        setRequests(mappedRequests);
+      }
+    } catch (error) {
+      console.error('Error fetching requests:', error);
+      showNotification('Failed to fetch requests', 'error');
+    }
+  };
 
   const handleApproveRequest = async (requestId: string) => {
     try {
       setIsLoading(true);
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await axios.put(`${config.apiBaseUrl}/api/admin/requests/${requestId}`, {
+        status: 'Processing'
+      });
       
-      // Update requests state
+      // Update requests state locally or refetch
       setRequests(prevRequests =>
         prevRequests.map(request =>
           request.id === requestId
-            ? { ...request, status: 'approved' }
+            ? { ...request, status: 'processing' }
             : request
         )
       );
@@ -30,6 +63,7 @@ const RequestMonitoringPage: React.FC = () => {
       setSelectedRequest(null);
       showNotification('Request approved successfully', 'success');
     } catch (error) {
+      console.error('Error approving request:', error);
       showNotification('Failed to approve request', 'error');
     } finally {
       setIsLoading(false);
@@ -39,14 +73,15 @@ const RequestMonitoringPage: React.FC = () => {
   const handleRejectRequest = async (requestId: string) => {
     try {
       setIsLoading(true);
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await axios.put(`${config.apiBaseUrl}/api/admin/requests/${requestId}`, {
+        status: 'Cancelled' // Mapping rejected to Cancelled
+      });
       
       // Update requests state
       setRequests(prevRequests =>
         prevRequests.map(request =>
           request.id === requestId
-            ? { ...request, status: 'rejected' }
+            ? { ...request, status: 'cancelled' }
             : request
         )
       );
@@ -55,6 +90,7 @@ const RequestMonitoringPage: React.FC = () => {
       setSelectedRequest(null);
       showNotification('Request rejected', 'success');
     } catch (error) {
+      console.error('Error rejecting request:', error);
       showNotification('Failed to reject request', 'error');
     } finally {
       setIsLoading(false);
@@ -100,109 +136,79 @@ const RequestMonitoringPage: React.FC = () => {
                 <h2 className="text-xl font-semibold text-gray-900">Request Details</h2>
                 <button 
                   onClick={() => setSelectedRequest(null)}
-                  className="text-gray-400 hover:text-gray-500 transition-colors"
+                  className="text-gray-400 hover:text-gray-500"
                 >
-                  <X size={20} />
+                  <span className="sr-only">Close</span>
+                  {/* Icon placeholder or close button */}
+                  X
                 </button>
               </div>
               
               <div className="space-y-6">
-                {/* Request Info */}
+                <div>
+                  <h3 className="text-sm font-medium text-gray-500">Institute</h3>
+                  <p className="mt-1 text-lg text-gray-900">{selectedRequest.instituteName}</p>
+                </div>
+                
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm text-gray-500">Institute</p>
-                    <p className="font-medium">{selectedRequest.instituteName}</p>
+                    <h3 className="text-sm font-medium text-gray-500">Urgency</h3>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium mt-1
+                      ${selectedRequest.urgency === 'Critical' ? 'bg-red-100 text-red-800' : 
+                        selectedRequest.urgency === 'High' ? 'bg-orange-100 text-orange-800' : 
+                        'bg-blue-100 text-blue-800'}`}>
+                      {selectedRequest.urgency}
+                    </span>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Status</p>
-                    <p className={`font-medium ${
-                      selectedRequest.status === 'approved' ? 'text-green-600' : 
-                      selectedRequest.status === 'rejected' ? 'text-red-600' :
-                      selectedRequest.status === 'fulfilled' ? 'text-blue-600' : 'text-amber-600'
-                    }`}>
-                      {selectedRequest.status.charAt(0).toUpperCase() + selectedRequest.status.slice(1)}
-                      {selectedRequest.flagged && ' (Flagged)'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Created</p>
-                    <p className="font-medium">{new Date(selectedRequest.createdAt).toLocaleString()}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Last Updated</p>
-                    <p className="font-medium">{new Date(selectedRequest.updatedAt).toLocaleString()}</p>
+                    <h3 className="text-sm font-medium text-gray-500">Status</h3>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium mt-1
+                      ${selectedRequest.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
+                        selectedRequest.status === 'processing' ? 'bg-blue-100 text-blue-800' : 
+                        'bg-green-100 text-green-800'}`}>
+                      {selectedRequest.status}
+                    </span>
                   </div>
                 </div>
 
-                {/* Flag Reason */}
-                {selectedRequest.flagged && selectedRequest.flagReason && (
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
-                    <p className="text-sm font-medium text-amber-800">Flag Reason:</p>
-                    <p className="text-sm text-amber-700">{selectedRequest.flagReason}</p>
-                  </div>
-                )}
-
-                {/* Items Table */}
                 <div>
-                  <h3 className="text-md font-medium mb-2">Requested Items</h3>
-                  <div className="bg-gray-50 rounded-md overflow-hidden">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-100">
-                        <tr>
-                          <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-                          <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
-                          <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Est. Cost</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {selectedRequest.items.map(item => (
-                          <tr key={item.id}>
-                            <td className="px-4 py-3 text-sm text-gray-900">{item.name}</td>
-                            <td className="px-4 py-3 text-sm text-gray-500">{item.quantity} {item.unit}</td>
-                            <td className="px-4 py-3 text-sm text-gray-900">₹{item.estimatedCost}</td>
-                          </tr>
-                        ))}
-                        <tr className="bg-gray-50">
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900" colSpan={2}>Total</td>
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                            ₹{selectedRequest.items.reduce((sum, item) => sum + item.estimatedCost, 0)}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
+                  <h3 className="text-sm font-medium text-gray-500">Requested Items</h3>
+                  <ul className="mt-2 divide-y divide-gray-200 border border-gray-200 rounded-md">
+                    {selectedRequest.items.map((item, index) => (
+                      <li key={index} className="pl-3 pr-4 py-3 flex items-center justify-between text-sm">
+                        <div className="w-0 flex-1 flex items-center">
+                          <span className="ml-2 flex-1 w-0 truncate">
+                            {item.name}
+                          </span>
+                        </div>
+                        <div className="ml-4 flex-shrink-0">
+                          <span className="font-medium text-gray-900">Qty: {item.quantity}</span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
 
-                {/* Action Buttons */}
+                <div>
+                  <h3 className="text-sm font-medium text-gray-500">Description</h3>
+                  <p className="mt-1 text-sm text-gray-900">{selectedRequest.description || "No description provided."}</p>
+                </div>
+
                 {selectedRequest.status === 'pending' && (
-                  <div className="flex gap-4 pt-4 border-t">
+                  <div className="flex space-x-3 mt-6">
                     <button
                       onClick={() => handleApproveRequest(selectedRequest.id)}
                       disabled={isLoading}
-                      className="flex-1 bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                      className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50"
                     >
-                      {isLoading ? (
-                        <span className="flex items-center justify-center">
-                          <Loader2 className="animate-spin -ml-1 mr-2 h-5 w-5" />
-                          Processing...
-                        </span>
-                      ) : (
-                        'Approve Request'
-                      )}
+                      {isLoading ? <Loader2 className="animate-spin mx-auto" /> : 'Approve Request'}
                     </button>
                     <button
                       onClick={() => handleRejectRequest(selectedRequest.id)}
                       disabled={isLoading}
-                      className="flex-1 bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                      className="flex-1 bg-white text-red-600 border border-red-600 px-4 py-2 rounded-md hover:bg-red-50 disabled:opacity-50"
                     >
-                      {isLoading ? (
-                        <span className="flex items-center justify-center">
-                          <Loader2 className="animate-spin -ml-1 mr-2 h-5 w-5" />
-                          Processing...
-                        </span>
-                      ) : (
-                        'Reject Request'
-                      )}
+                      {isLoading ? <Loader2 className="animate-spin mx-auto" /> : 'Reject Request'}
                     </button>
                   </div>
                 )}

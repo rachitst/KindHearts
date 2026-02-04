@@ -11,6 +11,7 @@ import Alert from "../components/Alert";
 import { useAuth } from "../context/AuthContext";
 import { useUser } from "@clerk/clerk-react";
 import { config } from "../../../../config/env";
+import axios from "axios";
 
 interface RegisterProps {
   onLogin: () => void;
@@ -193,6 +194,72 @@ const Register: React.FC<RegisterProps> = ({ onLogin }) => {
     }
   };
 
+  const handleVerificationSubmit = async () => {
+    if (!formData.legalInfo?.termsAccepted) {
+      setAlert({
+        message: "Please accept the terms and conditions",
+        type: "error",
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      // Register with backend
+      const profileData = {
+         name: formData.basicInfo?.instituteName,
+         email: formData.basicInfo?.email,
+         phone: formData.contactInfo?.phone,
+         address: formData.contactInfo?.address,
+         description: formData.basicInfo?.description,
+         image: formData.documents?.instituteLogo,
+         instituteType: formData.basicInfo?.instituteType,
+         institutionId: formData.basicInfo?.institutionId,
+         
+         requesterName: formData.representative?.name,
+         designation: formData.representative?.designation,
+         department: formData.representative?.department,
+         contactNumber: formData.representative?.phone,
+         alternateContact: formData.representative?.alternateContact,
+         
+         deliveryAddress: formData.contactInfo?.address,
+         landmark: formData.contactInfo?.landmark,
+         city: formData.contactInfo?.city,
+         state: formData.contactInfo?.state,
+         pincode: formData.contactInfo?.pincode,
+         preferredDeliveryTime: formData.contactInfo?.preferredDeliveryTime,
+         
+         identityType: formData.representative?.identityType,
+         identityNumber: formData.representative?.identityNumber,
+         identityProof: formData.documents?.identityProof,
+         institutionLetter: formData.documents?.institutionLetter,
+         
+         isVerified: true
+      };
+
+      const response = await axios.post(`${config.apiBaseUrl}${config.apiEndpoints.instituteProfile}`, profileData);
+
+      if (response.data.success) {
+          const instituteData = response.data.profile;
+          
+          // Clear draft only
+          localStorage.removeItem("registration_draft");
+          
+          // Update context state (without localStorage persistence)
+          registerAndLogin(instituteData);
+          onLogin();
+      }
+    } catch (error) {
+      console.error("Registration error:", error);
+      setAlert({
+        message: "Registration failed. Please try again.",
+        type: "error",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const validateCurrentStep = () => {
     switch (currentStep) {
       case 0:
@@ -210,67 +277,20 @@ const Register: React.FC<RegisterProps> = ({ onLogin }) => {
     }
   };
 
-  const handleSubmit = async () => {
-    setIsSubmitting(true);
-    try {
-      // ... form data preparation ...
-
-      const response = await fetch(
-        `${config.apiBaseUrl}${config.apiEndpoints.institutes}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(formData),
-        }
-      );
-
-      // ... rest of the code ...
-    } catch (error) {
-      // ... error handling ...
-    }
-  };
-
   const handleNext = async () => {
     if (currentStep === REGISTRATION_STEPS.length - 1) {
-      setIsSubmitting(true);
-      try {
-        // Save the complete institute data
-        localStorage.setItem(
-          "institute_data",
-          JSON.stringify({
-            ...formData,
-            userId: user?.id,
-            createdAt: new Date().toISOString(),
-            status: "pending_verification",
-          })
-        );
-
-        // Clear the draft data
-        localStorage.removeItem("registration_draft");
-
-        // Show success message
+      // Final step: Submit
+      await handleVerificationSubmit();
+    } else {
+      if (validateCurrentStep()) {
+        handleStepComplete(currentStep);
+        setCurrentStep((prev) => prev + 1);
+      } else {
         setAlert({
-          message: "Registration completed successfully!",
-          type: "success",
-        });
-
-        // Wait for 2 seconds to show the success message
-        setTimeout(() => {
-          onLogin();
-        }, 2000);
-      } catch (error) {
-        setAlert({
-          message: "Registration failed. Please try again.",
+          message: "Please fill in all required fields",
           type: "error",
         });
-      } finally {
-        setIsSubmitting(false);
       }
-    } else {
-      handleStepComplete(currentStep);
-      setCurrentStep((prev) => prev + 1);
     }
   };
 

@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
-import { getDashboardStats, getRequestsByStatus } from '../data/mockData';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
+import { config } from '../../../../config/env';
 import StatCard from '../components/StatCard';
 import RequestCard from '../components/RequestCard';
 import UrgencyBadge from '../components/UrgencyBadge';
@@ -18,7 +20,11 @@ import {
   Volume2,
   VolumeX,
   Globe,
-  User
+  User,
+  PlusCircle,
+  List,
+  CheckSquare,
+  ArrowRight
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -27,14 +33,98 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ isNewlyRegistered }) => {
-  const stats = getDashboardStats();
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [stats, setStats] = useState({
+    totalRequests: 0,
+    pending: 0,
+    processing: 0,
+    delivered: 0,
+    completed: 0
+  });
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
   const [statusRequests, setStatusRequests] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const { user } = useAuth();
+  const [allRequests, setAllRequests] = useState<any[]>([]);
+
+  // Settings state
+  const [settings, setSettings] = useState({
+    darkMode: false,
+    sound: true,
+    language: 'English'
+  });
+
+  const handleSettingChange = (key: string, value: any) => {
+    setSettings(prev => ({ ...prev, [key]: value }));
+  };
+
+  useEffect(() => {
+    const fetchStatsAndRequests = async () => {
+      const userEmail = user?.email || user?.basicInfo?.email;
+      
+      if (userEmail) {
+        try {
+          const [statsRes, requestsRes] = await Promise.all([
+            axios.get(`${config.apiBaseUrl}/api/institutes/stats`, {
+              params: { email: userEmail }
+            }),
+            axios.get(`${config.apiBaseUrl}/api/institutes`, {
+              params: { email: userEmail }
+            })
+          ]);
+
+          if (requestsRes.data?.success) {
+            const mapped = requestsRes.data.institutes.map((req: any) => ({
+              id: req._id,
+              itemName: req.itemName,
+              category: req.category,
+              quantity: req.quantity,
+              urgencyLevel: req.urgency,
+              status: req.status,
+              createdAt: req.createdAt,
+              updatedAt: req.updatedAt,
+              shopAssigned: req.shopAssigned,
+              specifications: req.specifications,
+              deliveryDate: req.expectedDeliveryDate,
+              feedback: req.feedback,
+              ...req
+            }));
+            // Sort by createdAt descending
+            mapped.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+            
+            setAllRequests(mapped);
+            const computed = mapped.reduce(
+              (acc: any, curr: any) => {
+                acc.totalRequests += 1;
+                if (curr.status === 'Pending') acc.pending += 1;
+                if (curr.status === 'Processing') acc.processing += 1;
+                if (curr.status === 'Delivered') acc.delivered += 1;
+                if (curr.status === 'Completed') acc.completed += 1;
+                return acc;
+              },
+              { totalRequests: 0, pending: 0, processing: 0, delivered: 0, completed: 0 }
+            );
+            setStats(computed);
+          } else if (statsRes.data?.success) {
+            const s = statsRes.data.stats;
+            setStats({
+              totalRequests: s.totalRequests || 0,
+              pending: s.pendingRequests || 0,
+              processing: 0,
+              delivered: 0,
+              completed: s.completedRequests || 0
+            });
+          }
+        } catch (error) {
+          console.error('Error fetching dashboard stats:', error);
+        }
+      }
+    };
+    fetchStatsAndRequests();
+  }, [user]);
 
   // Mock notifications
   const notifications = [
@@ -70,9 +160,12 @@ const Dashboard: React.FC<DashboardProps> = ({ isNewlyRegistered }) => {
     setSelectedStatus(status);
     setIsLoading(true);
     try {
-      const requests = await getRequestsByStatus(status);
-      setStatusRequests(requests);
-      setShowModal(true);
+      const userEmail = user?.email || user?.basicInfo?.email;
+      if (userEmail) {
+        const filtered = allRequests.filter(r => r.status === status);
+        setStatusRequests(filtered);
+        setShowModal(true);
+      }
     } catch (error) {
       console.error('Error fetching requests:', error);
     } finally {
@@ -89,14 +182,12 @@ const Dashboard: React.FC<DashboardProps> = ({ isNewlyRegistered }) => {
   };
 
   return (
-    <div className="space-y-6 animate-fadeIn">
+    <div className="space-y-8 animate-fadeIn pb-8">
       {isNewlyRegistered && (
-        <div className="bg-green-50 border-l-4 border-green-400 p-4">
+        <div className="bg-green-50 border-l-4 border-green-400 p-4 rounded-r-lg shadow-sm">
           <div className="flex">
             <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
+              <CheckCircle className="h-5 w-5 text-green-400" />
             </div>
             <div className="ml-3">
               <p className="text-sm text-green-700">
@@ -109,114 +200,40 @@ const Dashboard: React.FC<DashboardProps> = ({ isNewlyRegistered }) => {
       )}
 
       {/* Header with Actions */}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard Overview</h1>
-        <div className="flex items-center space-x-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Dashboard Overview</h1>
+          <p className="text-gray-500 mt-1">Welcome back! Here's what's happening with your requests.</p>
+        </div>
+        <div className="flex items-center space-x-3">
           {/* Notification Button */}
           <button 
             onClick={() => setShowNotifications(true)}
-            className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all duration-200"
+            className="relative p-2.5 text-gray-600 hover:text-[#100e92] hover:bg-indigo-50 rounded-full transition-all duration-200"
           >
-            <Bell size={20} />
+            <Bell size={22} />
             {notifications.some(n => n.unread) && (
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+              <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse border-2 border-white"></span>
             )}
           </button>
 
           {/* Settings Button */}
           <button 
             onClick={() => setShowSettings(true)}
-            className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all duration-200"
+            className="p-2.5 text-gray-600 hover:text-[#100e92] hover:bg-indigo-50 rounded-full transition-all duration-200"
           >
-            <Settings size={20} />
+            <Settings size={22} />
           </button>
         </div>
       </div>
 
-      {/* Notifications Modal */}
-      {showNotifications && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-end z-50">
-          <div className="w-96 bg-white h-full shadow-xl animate-slideIn">
-            <div className="p-4 border-b flex justify-between items-center bg-[#100e92] text-white">
-              <h2 className="text-lg font-semibold">Notifications</h2>
-              <button onClick={() => setShowNotifications(false)}>
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-4 space-y-4 overflow-y-auto max-h-[calc(100vh-5rem)]">
-              {notifications.map(notification => (
-                <div 
-                  key={notification.id}
-                  className={`p-4 rounded-lg border ${notification.unread ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'}`}
-                  onClick={() => handleNotificationClick(notification.id)}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="font-medium text-gray-900">{notification.title}</h3>
-                    <span className="text-xs text-gray-500">{notification.time}</span>
-                  </div>
-                  <p className="text-sm text-gray-600">{notification.message}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Settings Modal */}
-      {showSettings && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md animate-fadeIn">
-            <div className="p-4 border-b flex justify-between items-center bg-[#100e92] text-white rounded-t-lg">
-              <h2 className="text-lg font-semibold">Settings</h2>
-              <button onClick={() => setShowSettings(false)}>
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-6 space-y-6">
-              {/* Settings content */}
-              <div className="space-y-4">
-                {Object.entries(settings).map(([key, value]) => (
-                  <div key={key} className="flex items-center justify-between">
-                    <label className="flex items-center space-x-3">
-                      {key === 'darkMode' && <Moon size={20} className="text-gray-600" />}
-                      {key === 'sound' && (value ? <Volume2 size={20} className="text-gray-600" /> : <VolumeX size={20} className="text-gray-600" />)}
-                      <span className="text-gray-700 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
-                    </label>
-                    {typeof value === 'boolean' ? (
-                      <button
-                        onClick={() => handleSettingChange(key, !value)}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ease-in-out ${value ? 'bg-[#100e92]' : 'bg-gray-200'}`}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${value ? 'translate-x-6' : 'translate-x-1'}`}
-                        />
-                      </button>
-                    ) : (
-                      <select
-                        value={value}
-                        onChange={(e) => handleSettingChange(key, e.target.value)}
-                        className="border rounded-md px-2 py-1 text-sm"
-                      >
-                        <option value="English">English</option>
-                        <option value="Spanish">Spanish</option>
-                        <option value="French">French</option>
-                      </select>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Stats Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard 
-          title="Pending Requests" 
+          title="Pending" 
           count={stats.pending}
           icon={<Clock className="h-6 w-6 text-white" />}
-          color="bg-[#0f0a73]"
+          color="bg-gradient-to-br from-[#100e92] to-[#2a27b5]"
           textColor="text-white"
           onClick={() => handleStatusClick('Pending')}
         />
@@ -224,7 +241,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isNewlyRegistered }) => {
           title="Processing" 
           count={stats.processing}
           icon={<Truck className="h-6 w-6 text-white" />}
-          color="bg-[#0f0a73]"
+          color="bg-gradient-to-br from-[#100e92] to-[#2a27b5]"
           textColor="text-white"
           onClick={() => handleStatusClick('Processing')}
         />
@@ -232,7 +249,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isNewlyRegistered }) => {
           title="Delivered" 
           count={stats.delivered}
           icon={<Package className="h-6 w-6 text-white" />}
-          color="bg-[#0f0a73]"
+          color="bg-gradient-to-br from-[#100e92] to-[#2a27b5]"
           textColor="text-white"
           onClick={() => handleStatusClick('Delivered')}
         />
@@ -240,183 +257,127 @@ const Dashboard: React.FC<DashboardProps> = ({ isNewlyRegistered }) => {
           title="Completed" 
           count={stats.completed}
           icon={<CheckCircle className="h-6 w-6 text-white" />}
-          color="bg-[#0f0a73]"
+          color="bg-gradient-to-br from-[#100e92] to-[#2a27b5]"
           textColor="text-white"
           onClick={() => handleStatusClick('Completed')}
         />
       </div>
 
-      {/* Updated Dashboard Content Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Pending Requests Section */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 bg-[#100e92] text-white flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <AlertCircle size={20} />
-              <h2 className="text-lg font-medium">Pending Requests</h2>
+      {/* Quick Actions */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <button 
+          onClick={() => navigate('/institute/raise-request')}
+          className="flex items-center justify-between p-6 bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-indigo-100 transition-all group"
+        >
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-indigo-50 text-[#100e92] rounded-lg group-hover:bg-[#100e92] group-hover:text-white transition-colors">
+              <PlusCircle size={24} />
             </div>
-            <span className="px-2.5 py-1 bg-white/20 rounded-full text-sm">
-              {getRequestsByStatus('Pending').length} requests
-            </span>
+            <div className="text-left">
+              <h3 className="font-semibold text-gray-900">Raise Request</h3>
+              <p className="text-sm text-gray-500">Create a new donation request</p>
+            </div>
           </div>
-          
-          <div className="p-4 divide-y divide-gray-100">
-            {getRequestsByStatus('Pending').length > 0 ? (
-              getRequestsByStatus('Pending').map(request => (
-                <div 
-                  key={request.id} 
-                  className="py-4 hover:bg-gray-50 cursor-pointer transition-colors rounded-lg"
-                  onClick={() => handleStatusClick('Pending')}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-900">{request.itemName}</span>
-                        <UrgencyBadge level={request.urgencyLevel} />
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        Quantity: {request.quantity} • Requested on {request.createdAt}
-                      </div>
-                    </div>
-                    <StatusBadge status={request.status} />
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="py-8 text-center text-gray-500">
-                No pending requests at the moment
-              </div>
-            )}
-          </div>
-        </div>
+          <ArrowRight size={20} className="text-gray-300 group-hover:text-[#100e92] transition-colors" />
+        </button>
 
-        {/* In Progress Section */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 bg-[#100e92] text-white flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Truck size={20} />
-              <h2 className="text-lg font-medium">In Progress</h2>
+        <button 
+          onClick={() => navigate('/institute/my-requests')}
+          className="flex items-center justify-between p-6 bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-indigo-100 transition-all group"
+        >
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-indigo-50 text-[#100e92] rounded-lg group-hover:bg-[#100e92] group-hover:text-white transition-colors">
+              <List size={24} />
             </div>
-            <span className="px-2.5 py-1 bg-white/20 rounded-full text-sm">
-              {getRequestsByStatus('Processing').length} requests
-            </span>
+            <div className="text-left">
+              <h3 className="font-semibold text-gray-900">My Requests</h3>
+              <p className="text-sm text-gray-500">View all your requests</p>
+            </div>
           </div>
-          
-          <div className="p-4 divide-y divide-gray-100">
-            {getRequestsByStatus('Processing').length > 0 ? (
-              getRequestsByStatus('Processing').map(request => (
-                <div 
-                  key={request.id} 
-                  className="py-4 hover:bg-gray-50 cursor-pointer transition-colors rounded-lg"
-                  onClick={() => handleStatusClick('Processing')}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-900">{request.itemName}</span>
-                        <UrgencyBadge level={request.urgencyLevel} />
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        Assigned to: {request.shopAssigned?.name}
-                      </div>
-                    </div>
-                    <StatusBadge status={request.status} />
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="py-8 text-center text-gray-500">
-                No requests in progress
-              </div>
-            )}
-          </div>
-        </div>
+          <ArrowRight size={20} className="text-gray-300 group-hover:text-[#100e92] transition-colors" />
+        </button>
 
-        {/* Delivered Requests Section */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 bg-[#100e92] text-white flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Package size={20} />
-              <h2 className="text-lg font-medium">Delivered Requests</h2>
+        <button 
+          onClick={() => navigate('/institute/confirm-delivery')}
+          className="flex items-center justify-between p-6 bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:border-indigo-100 transition-all group"
+        >
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-indigo-50 text-[#100e92] rounded-lg group-hover:bg-[#100e92] group-hover:text-white transition-colors">
+              <CheckSquare size={24} />
             </div>
-            <span className="px-2.5 py-1 bg-white/20 rounded-full text-sm">
-              {getRequestsByStatus('Delivered').length} requests
-            </span>
+            <div className="text-left">
+              <h3 className="font-semibold text-gray-900">Confirm Delivery</h3>
+              <p className="text-sm text-gray-500">Verify received items</p>
+            </div>
           </div>
-          
-          <div className="p-4 divide-y divide-gray-100">
-            {getRequestsByStatus('Delivered').length > 0 ? (
-              getRequestsByStatus('Delivered').map(request => (
-                <div 
-                  key={request.id} 
-                  className="py-4 hover:bg-gray-50 cursor-pointer transition-colors rounded-lg"
-                  onClick={() => handleStatusClick('Delivered')}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-900">{request.itemName}</span>
-                        <UrgencyBadge level={request.urgencyLevel} />
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        Shop: {request.shopAssigned?.name} • Delivered on: {request.deliveryDate}
-                      </div>
-                    </div>
-                    <StatusBadge status={request.status} />
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="py-8 text-center text-gray-500">
-                No delivered requests
-              </div>
-            )}
-          </div>
-        </div>
+          <ArrowRight size={20} className="text-gray-300 group-hover:text-[#100e92] transition-colors" />
+        </button>
+      </div>
 
-        {/* Completed Requests Section */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 bg-[#100e92] text-white flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CheckCircle size={20} />
-              <h2 className="text-lg font-medium">Completed Requests</h2>
-            </div>
-            <span className="px-2.5 py-1 bg-white/20 rounded-full text-sm">
-              {getRequestsByStatus('Completed').length} requests
-            </span>
+      {/* Recent Activity Section */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+          <div className="flex items-center gap-2">
+            <Clock size={20} className="text-[#100e92]" />
+            <h2 className="text-lg font-semibold text-gray-900">Recent Activity</h2>
           </div>
-          
-          <div className="p-4 divide-y divide-gray-100">
-            {getRequestsByStatus('Completed').length > 0 ? (
-              getRequestsByStatus('Completed').map(request => (
-                <div 
-                  key={request.id} 
-                  className="py-4 hover:bg-gray-50 cursor-pointer transition-colors rounded-lg"
-                  onClick={() => handleStatusClick('Completed')}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-900">{request.itemName}</span>
-                        <UrgencyBadge level={request.urgencyLevel} />
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        Shop: {request.shopAssigned?.name}
-                        {request.feedback && (
-                          <span className="ml-2 text-green-600">• Rating: {request.feedback.rating}/5</span>
-                        )}
-                      </div>
+          <button 
+            onClick={() => navigate('/institute/my-requests')}
+            className="text-sm font-medium text-[#100e92] hover:text-[#0a0860] hover:underline"
+          >
+            View All
+          </button>
+        </div>
+        
+        <div className="divide-y divide-gray-100">
+          {allRequests.length > 0 ? (
+            allRequests.slice(0, 5).map(request => (
+              <div 
+                key={request.id} 
+                className="p-4 sm:px-6 hover:bg-gray-50 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+              >
+                <div className="flex items-start gap-4">
+                  <div className={`p-2 rounded-lg flex-shrink-0 ${
+                    request.category === 'Food' ? 'bg-orange-100 text-orange-600' :
+                    request.category === 'Medical' ? 'bg-red-100 text-red-600' :
+                    request.category === 'Education' ? 'bg-blue-100 text-blue-600' :
+                    'bg-gray-100 text-gray-600'
+                  }`}>
+                    <Package size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-medium text-gray-900">{request.itemName}</h3>
+                    <div className="flex items-center gap-2 mt-1 text-sm text-gray-500">
+                      <span>{request.category}</span>
+                      <span>•</span>
+                      <span>Qty: {request.quantity}</span>
+                      <span>•</span>
+                      <span>{new Date(request.createdAt).toLocaleDateString()}</span>
                     </div>
-                    <StatusBadge status={request.status} />
                   </div>
                 </div>
-              ))
-            ) : (
-              <div className="py-8 text-center text-gray-500">
-                No completed requests
+                <div className="flex items-center justify-between sm:justify-end gap-4">
+                  <UrgencyBadge level={request.urgencyLevel} />
+                  <StatusBadge status={request.status} />
+                </div>
               </div>
-            )}
-          </div>
+            ))
+          ) : (
+            <div className="py-12 flex flex-col items-center justify-center text-center">
+              <div className="bg-gray-50 p-4 rounded-full mb-4">
+                <Package size={32} className="text-gray-400" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-1">No requests yet</h3>
+              <p className="text-gray-500 mb-6">Start by creating your first donation request</p>
+              <button
+                onClick={() => navigate('/institute/raise-request')}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-[#100e92] text-white rounded-lg hover:bg-[#0d0940] transition-colors shadow-sm hover:shadow"
+              >
+                <PlusCircle size={18} />
+                Raise Request
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -438,34 +399,9 @@ const Dashboard: React.FC<DashboardProps> = ({ isNewlyRegistered }) => {
             
             <div className="p-6 overflow-y-auto max-h-[calc(80vh-120px)]">
               {statusRequests.length > 0 ? (
-                <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-4">
                   {statusRequests.map(request => (
-                    <div 
-                      key={request.id}
-                      className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow"
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <h3 className="font-medium text-gray-900">{request.itemName}</h3>
-                          <p className="text-sm text-gray-500">{request.category}</p>
-                        </div>
-                        <StatusBadge status={request.status} />
-                      </div>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <p className="text-gray-500">Quantity: {request.quantity}</p>
-                          <p className="text-gray-500">Created: {request.createdAt}</p>
-                        </div>
-                        {request.shopAssigned && (
-                          <div>
-                            <p className="font-medium text-gray-900">{request.shopAssigned.name}</p>
-                            <p className="text-gray-500">{request.shopAssigned.contactPerson}</p>
-                            <p className="text-gray-500">{request.shopAssigned.phone}</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    <RequestCard key={request.id} request={request} />
                   ))}
                 </div>
               ) : (

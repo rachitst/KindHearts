@@ -3,20 +3,12 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useClerk, useUser } from '@clerk/clerk-react';
 import { Menu, X, Heart, LogOut } from 'lucide-react';
 import { storage } from '../utils/storage';
-import { SignInButton, SignUpButton, UserButton } from '@clerk/clerk-react';
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { user, isSignedIn } = useUser();
   const { signOut } = useClerk();
   const navigate = useNavigate();
-
-  const [showAdminModal, setShowAdminModal] = useState(false);
-  const [adminCredentials, setAdminCredentials] = useState({
-    email: '',
-    password: ''
-  });
-  const [error, setError] = useState('');
 
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen);
@@ -26,17 +18,6 @@ const Navbar = () => {
     storage.clearUserData();
     await signOut();
     navigate('/');
-  };
-
-  const handleAdminLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (adminCredentials.email === 'admin@hopebridge.com' && adminCredentials.password === 'HopeBridge@123') {
-      // Store admin auth state
-      localStorage.setItem('adminAuth', 'true');
-      navigate('/admin/dashboard');
-    } else {
-      setError('Invalid credentials');
-    }
   };
 
   return (
@@ -61,13 +42,6 @@ const Navbar = () => {
             <Link to="/#impact" className="px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50">
               Impact
             </Link>
-            
-            <button
-              onClick={() => setShowAdminModal(true)}
-              className="px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
-            >
-              Admin Login
-            </button>
             
             {isSignedIn ? (
               <div className="flex items-center space-x-4">
@@ -142,16 +116,6 @@ const Navbar = () => {
               Impact
             </Link>
             
-            <button
-              onClick={() => {
-                toggleMenu();
-                setShowAdminModal(true);
-              }}
-              className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
-            >
-              Admin Login
-            </button>
-            
             {isSignedIn ? (
               <>
                 <span className="block px-3 py-2 text-base font-medium text-gray-700">
@@ -182,64 +146,6 @@ const Navbar = () => {
                 </Link>
               </>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* Admin Login Modal */}
-      {showAdminModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">Admin Login</h2>
-              <button
-                onClick={() => {
-                  setShowAdminModal(false);
-                  setError('');
-                  setAdminCredentials({ email: '', password: '' });
-                }}
-                className="text-gray-400 hover:text-gray-500"
-              >
-                <X size={24} />
-              </button>
-            </div>
-            <form onSubmit={handleAdminLogin} className="space-y-4">
-              {error && (
-                <div className="text-red-500 text-sm">{error}</div>
-              )}
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  id="email"
-                  value={adminCredentials.email}
-                  onChange={(e) => setAdminCredentials(prev => ({ ...prev, email: e.target.value }))}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-rose-500 focus:border-rose-500"
-                  required
-                />
-              </div>
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  id="password"
-                  value={adminCredentials.password}
-                  onChange={(e) => setAdminCredentials(prev => ({ ...prev, password: e.target.value }))}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-rose-500 focus:border-rose-500"
-                  required
-                />
-              </div>
-              <button
-                type="submit"
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500"
-              >
-                Login
-              </button>
-            </form>
           </div>
         </div>
       )}

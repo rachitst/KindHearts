@@ -9,6 +9,7 @@ import ConfirmDelivery from './pages/ConfirmDelivery';
 import History from './pages/History';
 import Profile from './pages/Profile';
 import { useUser } from '@clerk/clerk-react';
+import { config } from '../../../config/env';
 import './index.css';
 
 const InstituteDashboardApp = () => {
@@ -19,16 +20,31 @@ const InstituteDashboardApp = () => {
   const [isCheckingRegistration, setIsCheckingRegistration] = useState(true);
 
   useEffect(() => {
-    if (isLoaded && user) {
-      const userRole = user.publicMetadata?.role || user.unsafeMetadata?.role;
-      if (userRole === 'institute') {
-        setIsAuthenticated(true);
-        // Check if institute data exists in localStorage
-        const instituteData = localStorage.getItem('institute_data');
-        setIsRegistered(!!instituteData);
+    const checkRegistration = async () => {
+      if (isLoaded && user) {
+        const userRole = user.publicMetadata?.role || user.unsafeMetadata?.role;
+        if (userRole === 'institute') {
+          setIsAuthenticated(true);
+          try {
+            const email = user.primaryEmailAddress?.emailAddress;
+            if (email) {
+              const res = await fetch(`${config.apiBaseUrl}${config.apiEndpoints.instituteProfile}/${email}`);
+              if (res.ok) {
+                setIsRegistered(true);
+              } else {
+                setIsRegistered(false);
+              }
+            }
+          } catch (error) {
+            console.error("Error checking registration:", error);
+            setIsRegistered(false);
+          }
+        }
+        setIsCheckingRegistration(false);
       }
-      setIsCheckingRegistration(false);
-    }
+    };
+
+    checkRegistration();
   }, [isLoaded, user]);
 
   const handleRegistrationComplete = () => {

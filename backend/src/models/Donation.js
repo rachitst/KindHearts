@@ -14,12 +14,21 @@ const DonationSchema = new mongoose.Schema(
     },
     donationItem: {
       type: String,
-      required: true,
       trim: true,
     },
     message: {
       type: String,
       trim: true,
+    },
+    type: {
+      type: String,
+      enum: ["donation", "withdrawal"],
+      default: "donation",
+    },
+    status: {
+      type: String,
+      enum: ["completed", "pending", "failed"],
+      default: "completed",
     },
   },
   { timestamps: true }

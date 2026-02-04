@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   BarChart3, 
   Download, 
@@ -10,9 +10,12 @@ import {
   FileText,
   MapPin
 } from 'lucide-react';
+import axios from 'axios';
+import { config } from '../../../../config/env';
 
 const ImpactReports = () => {
   const [reportPeriod, setReportPeriod] = useState('2025');
+  const [stories, setStories] = useState<any[]>([]);
 
   // Sample data
   const impactStats = {
@@ -30,40 +33,19 @@ const ImpactReports = () => {
     { month: 'May', amount: 1100 }
   ];
 
-  const impactBreakdown = [
-    {
-      id: 1,
-      category: 'Healthcare',
-      amount: '₹5,250',
-      beneficiaries: '850',
-      description: 'Provided medical supplies and support to local hospitals',
-      image: 'https://images.unsplash.com/photo-1584515933487-779824d29309?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60'
-    },
-    {
-      id: 2,
-      category: 'Education',
-      amount: '₹3,800',
-      beneficiaries: '420',
-      description: 'Funded scholarships and educational resources',
-      image: 'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60'
-    },
-    {
-      id: 3,
-      category: 'Food Security',
-      amount: '₹2,200',
-      beneficiaries: '980',
-      description: 'Supported local food banks and meal programs',
-      image: 'https://images.unsplash.com/photo-1593113630400-ea4288922497?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60'
-    },
-    {
-      id: 4,
-      category: 'Animal Welfare',
-      amount: '₹1,500',
-      beneficiaries: '200',
-      description: 'Helped animal shelters with supplies and care',
-      image: 'https://images.unsplash.com/photo-1548767797-d8c844163c4c?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60'
-    }
-  ];
+  useEffect(() => {
+    const fetchImpactStories = async () => {
+      try {
+        const res = await axios.get(`${config.apiBaseUrl}/api/impact-stories`);
+        if (res.data?.success && Array.isArray(res.data.stories)) {
+          setStories(res.data.stories);
+        }
+      } catch (error) {
+        console.error('Error fetching impact stories:', error);
+      }
+    };
+    fetchImpactStories();
+  }, []);
 
   const taxReports = [
     { id: 1, year: '2025', quarter: 'Q1', amount: '₹3,450', status: 'available' },
@@ -180,21 +162,21 @@ const ImpactReports = () => {
       <div>
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Impact Breakdown</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {impactBreakdown.map((impact) => (
+          {stories.map((impact: any) => (
             <div key={impact.id} className="bg-white rounded-xl shadow-sm overflow-hidden">
               <img 
-                src={impact.image} 
-                alt={impact.category} 
+                src={impact.image}
+                alt={impact.title}
                 className="w-full h-40 object-cover"
               />
               <div className="p-4">
-                <h3 className="font-medium text-gray-900">{impact.category}</h3>
-                <div className="mt-2 flex items-center text-sm text-gray-500">
-                  <Users size={16} className="mr-1" />
-                  <span>{impact.beneficiaries} beneficiaries</span>
-                </div>
+                <h3 className="font-medium text-gray-900">{impact.title}</h3>
                 <div className="mt-1 text-sm text-gray-500">{impact.description}</div>
-                <div className="mt-3 font-medium text-rose-600">{impact.amount}</div>
+                <div className="mt-2">
+                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-rose-50 text-rose-700">
+                    {impact.category}
+                  </span>
+                </div>
               </div>
             </div>
           ))}

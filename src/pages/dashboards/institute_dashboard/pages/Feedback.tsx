@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Star, Send, ThumbsUp, X } from 'lucide-react';
-import { storeFeedback, FeedbackData } from '../data/mockData';
+import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
 
 interface FeedbackForm {
   rating: number;
@@ -15,6 +16,7 @@ interface FeedbackResponse {
 }
 
 const Feedback = () => {
+  const { user } = useAuth();
   const [form, setForm] = useState<FeedbackForm>({
     rating: 0,
     category: '',
@@ -23,33 +25,6 @@ const Feedback = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
   const [apiResponse, setApiResponse] = useState<FeedbackResponse | null>(null);
-
-  // Updated API simulation with storage
-  const submitFeedbackToAPI = async (feedback: FeedbackForm): Promise<FeedbackResponse> => {
-    try {
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Store the feedback in our mock database
-      const storedFeedback = storeFeedback({
-        rating: feedback.rating,
-        category: feedback.category,
-        comment: feedback.comment
-      });
-
-      // Log to console to verify storage
-      console.log('Stored Feedback:', storedFeedback);
-      
-      return {
-        success: true,
-        message: 'Feedback submitted successfully!',
-        data: feedback
-      };
-    } catch (error) {
-      console.error('Error storing feedback:', error);
-      throw new Error('Failed to store feedback');
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,19 +42,31 @@ const Feedback = () => {
     setIsSubmitting(true);
 
     try {
-      const response = await submitFeedbackToAPI(form);
-      setApiResponse(response);
+      const payload = {
+        name: user?.name || "Anonymous",
+        email: user?.email || "anonymous@example.com",
+        role: "institute",
+        rating: form.rating,
+        message: `${form.category}: ${form.comment}`,
+      };
+
+      const response = await axios.post(`${config.apiBaseUrl}/api/feedback`, payload);
+      
+      setApiResponse({
+        success: true,
+        message: 'Feedback submitted successfully!',
+        data: form
+      });
       setShowPopup(true);
       
-      if (response.success) {
-        // Reset form after successful submission
-        setForm({
-          rating: 0,
-          category: '',
-          comment: ''
-        });
-      }
+      // Reset form after successful submission
+      setForm({
+        rating: 0,
+        category: '',
+        comment: ''
+      });
     } catch (error) {
+      console.error('Error submitting feedback:', error);
       setApiResponse({
         success: false,
         message: 'Failed to submit feedback. Please try again.'
@@ -89,6 +76,7 @@ const Feedback = () => {
       setIsSubmitting(false);
     }
   };
+
 
   return (
     <div className="max-w-2xl mx-auto space-y-8 animate-fadeIn relative">

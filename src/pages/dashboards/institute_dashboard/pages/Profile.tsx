@@ -2,21 +2,123 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Building2, Mail, Phone, MapPin, FileText, User, Calendar, Globe } from 'lucide-react';
 import { InstituteDetails } from '../types/institute';
+import { config } from '../../../../config/env';
 
 const Profile = () => {
+  const { user } = useAuth();
   const [instituteData, setInstituteData] = useState<InstituteDetails | null>(null);
 
   useEffect(() => {
-    const savedData = localStorage.getItem('institute_data');
-    if (savedData) {
-      setInstituteData(JSON.parse(savedData));
-    }
+    const loadProfile = async () => {
+      // Use user.email from AuthContext if available, otherwise try localStorage
+      const email = user?.email || localStorage.getItem('institute_email');
+      
+      if (!email) {
+          // If no email, we can't fetch profile. 
+          // Maybe redirect or show error? For now, leave empty.
+          return;
+      }
+
+      try {
+        const url = `${config.apiBaseUrl}${config.apiEndpoints.instituteProfile}/${encodeURIComponent(email)}`;
+        
+        const res = await fetch(url);
+        const data = await res.json();
+        
+        if (data.success && data.profile) {
+          const profile = data.profile;
+          const mapped: InstituteDetails = {
+            id: profile._id,
+            basicInfo: {
+              instituteName: profile.name || '',
+              instituteType: profile.instituteType || '',
+              yearEstablished: '', // Not in profile model
+              website: '', // Not in profile model
+              email: profile.email || '',
+              password: '',
+              description: profile.description || '',
+              category: '', // Not in profile model
+              institutionId: profile.institutionId || '',
+              beneficiaryCount: '', // Not in profile model
+            },
+            contactInfo: {
+              phone: profile.phone || '',
+              alternatePhone: '',
+              address: profile.address || '',
+              landmark: profile.landmark || '',
+              city: profile.city || '',
+              state: profile.state || '',
+              pincode: profile.pincode || '',
+              preferredDeliveryTime: profile.preferredDeliveryTime || '',
+            },
+            legalInfo: {
+              registrationNumber: '',
+              registrationDate: '',
+              registrationAuthority: '',
+              taxIdentificationNumber: '',
+              previousDonations: 'No',
+              previousDonationDetails: '',
+              specialRequirements: '',
+              termsAccepted: true,
+            },
+            documents: {
+              registrationCertificate: '',
+              taxCertificate: '',
+              authorityLetter: '',
+              instituteLogo: profile.image || '',
+              identityProof: profile.identityProof || '',
+              institutionLetter: profile.institutionLetter || '',
+            },
+            representative: {
+              name: profile.requesterName || '',
+              designation: profile.designation || '',
+              department: profile.department || '',
+              email: profile.email || '', // Representative email usually same or not stored separately
+              phone: profile.contactNumber || '',
+              alternateContact: profile.alternateContact || '',
+              idProof: '',
+              identityType: profile.identityType || '',
+              identityNumber: profile.identityNumber || '',
+              photo: '',
+            },
+            requestDetails: {
+              itemName: '',
+              quantity: '',
+              urgency: '',
+              specifications: '',
+              expectedDeliveryDate: '',
+              purpose: '',
+              deliveryAddress: profile.deliveryAddress || '',
+            },
+            institutionDetails: {
+              category: [],
+              studentStrength: undefined,
+              bedStrength: undefined,
+              facilities: [],
+              accreditations: [],
+            },
+            status: profile.isVerified ? 'active' : 'pending',
+            createdAt: profile.createdAt || new Date().toISOString(),
+            updatedAt: profile.updatedAt || new Date().toISOString(),
+          };
+          setInstituteData(mapped);
+        } else {
+            setInstituteData(null);
+        }
+      } catch (error) {
+        console.error('Error loading profile:', error);
+        setInstituteData(null);
+      }
+    };
+    loadProfile();
   }, []);
 
   if (!instituteData) {
     return (
       <div className="max-w-4xl mx-auto p-6">
-        <p className="text-gray-600">Loading profile data...</p>
+        <div className="bg-white shadow rounded-lg p-6 text-center">
+          <p className="text-gray-600">No profile data available. Please ensure you are registered.</p>
+        </div>
       </div>
     );
   }

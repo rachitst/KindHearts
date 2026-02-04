@@ -28,22 +28,22 @@ const RoleSelection = () => {
         return;
       }
 
-      try {
-        // Check email_role_map for existing role
-        const emailRoleMap = JSON.parse(localStorage.getItem('email_role_map') || '{}');
-        const existingRole = emailRoleMap[email];
-
-        if (existingRole) {
-          console.log('Existing role found, redirecting:', { email, role: existingRole });
-          navigate(`/dashboard/${existingRole}`);
-        } else {
-          // No existing role, show role selection
-          setIsLoading(false);
-        }
-      } catch (error) {
-        console.error('Error checking role:', error);
-        setIsLoading(false);
+      // 1. Check Metadata
+      const metadataRole = user.publicMetadata?.role || user.unsafeMetadata?.role;
+      if (metadataRole) {
+         console.log('Role found in metadata:', metadataRole);
+         navigate(`/dashboard/${metadataRole}`);
+         return;
       }
+
+      // 2. Legacy Check (Optional, can be removed if strict)
+      const emailRoleMap = JSON.parse(localStorage.getItem('email_role_map') || '{}');
+      if (emailRoleMap[email]) {
+         navigate(`/dashboard/${emailRoleMap[email]}`);
+         return;
+      }
+      
+      setIsLoading(false);
     };
 
     checkAndRedirect();
@@ -60,28 +60,14 @@ const RoleSelection = () => {
 
       setSelectedRole(role);
 
-      // Get existing email-role map
-      const emailRoleMap = JSON.parse(
-        localStorage.getItem('email_role_map') || '{}'
-      );
-
-      // Update the map with new email-role pair
-      const updatedMap = {
-        ...emailRoleMap,
-        [email]: role
-      };
-
-      // Save updated map back to localStorage
-      localStorage.setItem('email_role_map', JSON.stringify(updatedMap));
-
-      console.log('Role mapping saved:', { email, role, emailRoleMap: updatedMap });
-
       // Update user metadata with selected role
       await user.update({
         unsafeMetadata: {
           role: role,
         },
       });
+      
+      console.log('Role mapping saved to metadata:', { email, role });
 
       // Navigate to appropriate dashboard
       navigate(`/dashboard/${role}`);

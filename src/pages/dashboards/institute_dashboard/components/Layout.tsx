@@ -42,7 +42,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageChange }) 
       label: "Confirm Delivery",
       icon: <CheckSquare size={20} />,
     },
-    { path: "history", label: "History", icon: <History size={20} /> },
+    // { path: "history", label: "History", icon: <History size={20} /> },
     { path: "profile", label: "Profile", icon: <User size={20} /> },
   ];
 

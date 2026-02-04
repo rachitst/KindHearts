@@ -3,7 +3,7 @@ const Shop = require("../models/Shop");
 
 exports.placeOrder = async (req, res) => {
   try {
-    const { shopId, items } = req.body;
+    const { shopId, items, deliveryAddress, contactPerson, contactNumber, paymentStatus, notes } = req.body;
 
     const shop = await Shop.findById(shopId);
     if (!shop) return res.status(404).json({ message: "Shop not found" });
@@ -13,7 +13,16 @@ exports.placeOrder = async (req, res) => {
       0
     );
 
-    const order = new Order({ shop: shopId, items, totalAmount });
+    const order = new Order({ 
+      shop: shopId, 
+      items, 
+      totalAmount,
+      deliveryAddress,
+      contactPerson,
+      contactNumber,
+      paymentStatus,
+      notes
+    });
     await order.save();
 
     res.status(201).json({ success: true, message: "Order placed", order });
@@ -40,7 +49,7 @@ exports.updateOrderStatus = async (req, res) => {
     const { orderId } = req.params;
     const { status } = req.body;
 
-    if (!["pending", "completed", "cancelled"].includes(status)) {
+    if (!["pending", "accepted", "packaging", "ready", "completed", "cancelled"].includes(status)) {
       return res
         .status(400)
         .json({ success: false, message: "Invalid status value" });

@@ -1,6 +1,6 @@
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+const Groq = require("groq-sdk");
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const MODEL_NAME = "meta-llama/llama-4-scout-17b-16e-instruct";
 
 const Institute = require("../models/Institute");
 const Donation = require("../models/Donation");
@@ -54,15 +54,18 @@ async function getInstituteRecommendations(donorName, donationItem) {
     console.log("\n🔹 LLM Prompt Sent:");
     console.log(prompt);
 
-    const result = await model.generateContent(prompt);
-    if (!result || !result.response || !result.response.candidates) {
+    const result = await groq.chat.completions.create({
+      messages: [{ role: "user", content: prompt }],
+      model: MODEL_NAME,
+    });
+
+    if (!result || !result.choices || !result.choices.length) {
       console.log("⚠️ Invalid LLM response.");
       return { success: false, message: "Invalid LLM response" };
     }
 
     const reasoningText =
-      result.response.candidates[0]?.content?.parts[0]?.text.trim() ||
-      "No response from LLM";
+      result.choices[0]?.message?.content?.trim() || "No response from LLM";
     console.log("\n🔹 LLM Response:");
     console.log(reasoningText);
 

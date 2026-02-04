@@ -4,10 +4,10 @@ exports.createDonation = async (req, res) => {
   try {
     const { donorName, amount, donationItem, message } = req.body;
 
-    if (!donorName || !amount || !donationItem) {
+    if (!donorName || !amount) {
       return res
         .status(400)
-        .json({ error: "Donor name, amount, and donation item are required" });
+        .json({ error: "Donor name and amount are required" });
     }
 
     const donation = new Donation({ donorName, amount, donationItem, message });
@@ -22,9 +22,14 @@ exports.createDonation = async (req, res) => {
 
 exports.getDonations = async (req, res) => {
   try {
+    const filter = {};
+    if (req.query.donor) {
+      filter.donorName = req.query.donor;
+    }
+
     const donations = await Donation.find(
-      {},
-      "donorName amount donationItem message createdAt updatedAt"
+      filter,
+      "donorName amount donationItem message type status createdAt updatedAt"
     );
     res.status(200).json({ success: true, donations });
   } catch (error) {

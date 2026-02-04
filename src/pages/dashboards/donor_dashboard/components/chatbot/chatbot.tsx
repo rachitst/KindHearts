@@ -3,6 +3,7 @@ import ChatMessage from "./ChatMessage";
 import { MessageCircle, X, Send, Bot, HeartHandshake } from 'lucide-react';
 import Chatform from "./Chatform";
 import { trackerinfo } from "./trackerinfo";
+import { config } from "../../../../../config/env";
 import './chatbot.css';
 
 interface ChatMessage {
@@ -27,9 +28,8 @@ interface ApiResponse {
 
 const Chatbot: React.FC = () => {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([{
-    hideInChat: true,
     role: "model",
-    text: trackerinfo,
+    text: "Namaste! 🙏 I'm Sahayak, your donation assistant. How can I help you today?",
   }]);
   const [showChatbot, setShowChatbot] = useState(false);
   const chatBodyRef = useRef<HTMLDivElement>(null);
@@ -39,21 +39,33 @@ const Chatbot: React.FC = () => {
       setChatHistory(prev => [...prev.filter(msg => msg.text !== "Thinking...."), { role: "model", text, isError }]);
     };
 
-    const formattedHistory = history.map(({ role, text }) => ({ role, parts: [{ text }] }));
+    const formattedHistory = history.map(({ role, text }) => ({ 
+      role: role === 'model' ? 'assistant' : 'user', 
+      content: text 
+    }));
 
     const requestOptions = {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contents: formattedHistory }),
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${import.meta.env.VITE_GROQ_API_KEY}`
+      },
+      body: JSON.stringify({ 
+        model: `${import.meta.env.VITE_GROQ_MODEL}`,
+        messages: [
+          { role: "system", content: trackerinfo },
+          ...formattedHistory
+        ]
+      }),
     };
 
     try {
-      const response = await fetch(import.meta.env.VITE_API_URL, requestOptions);
-      const data: ApiResponse = await response.json();
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", requestOptions);
+      const data = await response.json();
       
       if (!response.ok) throw new Error(data.error?.message || "Something went wrong!");
       
-      const apiResponseText = data.candidates[0].content.parts[0].text.replace(/\*\*(.*?)\*\*/g, "$1").trim();
+      const apiResponseText = data.choices[0].message.content;
       updateHistory(apiResponseText);
     } catch (error) {
       updateHistory((error as Error).message, true);
@@ -98,13 +110,13 @@ const Chatbot: React.FC = () => {
         </div>
 
         <div ref={chatBodyRef} className="chat-body">
-          <div className="message bot-message">
+          {/* <div className="message bot-message">
             <HeartHandshake className="w-8 h-8 text-indigo-600" />
             <div className="message-text">
               <p>Namaste! 🙏</p>
               <p>I'm Sahayak, your donation assistant. How can I help you today?</p>
             </div>
-          </div>
+          </div> */}
           {chatHistory.map((chat, index) => (
             <ChatMessage key={index} chat={chat} />
           ))}
