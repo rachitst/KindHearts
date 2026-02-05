@@ -1,8 +1,9 @@
 const Donation = require("../models/Donation");
+const Institute = require("../models/Institute");
 
 exports.createDonation = async (req, res) => {
   try {
-    const { donorName, amount, donationItem, message } = req.body;
+    const { donorName, amount, donationItem, message, instituteId, donorId, paymentId, donationType, resources, status } = req.body;
 
     if (!donorName || !amount) {
       return res
@@ -10,8 +11,32 @@ exports.createDonation = async (req, res) => {
         .json({ error: "Donor name and amount are required" });
     }
 
-    const donation = new Donation({ donorName, amount, donationItem, message });
+    const donation = new Donation({ 
+        donorName, 
+        amount, 
+        donationItem, 
+        message,
+        instituteId,
+        donorId,
+        paymentId,
+        type: donationType || 'monetary',
+        resources,
+        status: status || 'completed'
+    });
+    
     await donation.save();
+
+    // Update Institute amountRaised
+    if (instituteId && (status === 'completed' || !status)) {
+        try {
+            await Institute.findByIdAndUpdate(instituteId, {
+                $inc: { amountRaised: amount }
+            });
+        } catch (updateError) {
+            console.error("Error updating institute amountRaised:", updateError);
+            // Don't fail the donation if this fails, but log it
+        }
+    }
 
     res.status(201).json({ success: true, donation });
   } catch (error) {

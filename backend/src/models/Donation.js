@@ -8,9 +8,8 @@ const DonationSchema = new mongoose.Schema(
       trim: true,
     },
     donorId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: false, // Optional for now to support anonymous/existing data
+      type: String, // Changed to String to support external auth IDs (e.g., Clerk)
+      required: false,
     },
     amount: {
       type: Number,
@@ -27,7 +26,7 @@ const DonationSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ["donation", "withdrawal"],
+      enum: ["donation", "withdrawal", "monetary", "resource"], // Added monetary and resource
       default: "donation",
     },
     status: {

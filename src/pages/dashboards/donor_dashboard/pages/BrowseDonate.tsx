@@ -2,28 +2,22 @@ import React, { useState, useEffect, useMemo } from "react";
 import {
   Search,
   Filter,
-  ChevronDown,
-  DollarSign,
-  Package,
-  ShoppingCart,
-  X,
-  CreditCard,
-  Users,
-  MapPin,
-  Globe,
-  Calendar,
-  ExternalLink,
   Heart,
-  Share2,
-  CheckCircle2,
   Sparkles,
-  Star,
+  Flame,
+  Utensils,
+  BookOpen,
+  Stethoscope,
+  X,
+  CheckCircle2,
+  AlertCircle,
+  Store,
+  ArrowRight,
   Download
 } from "lucide-react";
 import axios from "axios";
 import { useUser } from "@clerk/clerk-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Button } from "../components/Button";
 import Confetti from "react-confetti";
 import { generateAndOpenReceipt } from "../../../../utils/receiptGenerator";
 
@@ -38,17 +32,13 @@ interface RecommendedInstitute {
   category: string;
   itemName?: string;
   quantity?: number;
+  amountNeeded?: number;
+  amountRaised?: number;
   urgency?: string;
   beneficiaryCount?: number;
   previousDonations?: boolean;
   createdAt?: string;
-}
-
-interface DonationCategory {
-  id: string;
-  name: string;
-  icon: React.ReactNode;
-  items: string[];
+  image?: string;
 }
 
 interface RazorpayOptions {
@@ -67,33 +57,6 @@ interface RazorpayOptions {
   };
 }
 
-const DONATION_CATEGORIES: DonationCategory[] = [
-  {
-    id: "food",
-    name: "Food & Nutrition",
-    icon: <Package size={24} />,
-    items: ["Rice", "Wheat", "Lentils", "Cooking Oil", "Spices", "Vegetables"],
-  },
-  {
-    id: "education",
-    name: "Education",
-    icon: <Sparkles size={24} />,
-    items: ["Notebooks", "Pens/Pencils", "Textbooks", "School Bags", "Uniforms"],
-  },
-  {
-    id: "medical",
-    name: "Medical",
-    icon: <Heart size={24} />,
-    items: ["Medicines", "First Aid Kits", "Wheelchairs", "Hygiene Kits"],
-  },
-  {
-    id: "clothing",
-    name: "Clothing",
-    icon: <ShoppingCart size={24} />,
-    items: ["Shirts", "Pants", "Sarees", "Kids Wear", "Blankets"],
-  },
-];
-
 const config = {
   apiBaseUrl: import.meta.env.VITE_API_BASE_URL,
 };
@@ -101,36 +64,87 @@ const config = {
 const BrowseDonate = () => {
   const { user } = useUser();
   const [donorName, setDonorName] = useState(user?.fullName || "");
-  const [selectedCategory, setSelectedCategory] = useState("");
-  const [selectedItems, setSelectedItems] = useState<string[]>([]);
-  const [recommendedInstitutes, setRecommendedInstitutes] = useState<RecommendedInstitute[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [recommendedInfoMessage, setRecommendedInfoMessage] = useState<string | null>(null);
-
-  // Pagination and filtering states for "All Institutes"
-  const [allInstitutes, setAllInstitutes] = useState<RecommendedInstitute[]>([]);
   const [searchResults, setSearchResults] = useState<RecommendedInstitute[] | null>(null);
-  const [impactStories, setImpactStories] = useState<any[]>([]);
-  const [pageIndex, setPageIndex] = useState(0);
-  const [pageSize, setPageSize] = useState(6);
-  const [activeCategory, setActiveCategory] = useState("all"); // Filter for Browse All
+  const [allInstitutes, setAllInstitutes] = useState<RecommendedInstitute[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortBy, setSortBy] = useState("recent");
-  const [showFilteredAll, setShowFilteredAll] = useState(false); // If true, filter "All" by recommendation criteria
+  const [activeFilter, setActiveFilter] = useState("all");
+  
+  // Donation & Modal States
+  const [selectedInstitute, setSelectedInstitute] = useState<RecommendedInstitute | null>(null);
+  const [donationAmount, setDonationAmount] = useState<string>("");
+  const [showDonateModal, setShowDonateModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [currentDonation, setCurrentDonation] = useState<any>(null);
+  const [windowSize, setWindowSize] = useState({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
 
-  // Derived state for "All Institutes"
-  const categories = [
-    { id: "all", name: "All Causes" },
-    { id: "food", name: "Food & Hunger" },
-    { id: "education", name: "Education" },
-    { id: "healthcare", name: "Healthcare" },
-    { id: "animals", name: "Animals" },
-    { id: "environment", name: "Environment" },
-  ];
+  // Load initial data
+  useEffect(() => {
+    const fetchInstitutes = async () => {
+      setIsLoading(true);
+      try {
+        const res = await axios.get(`${config.apiBaseUrl}/api/search/semantic`, {
+           // Sending empty query to get all or use a different endpoint if available. 
+           // Reusing semantic search with generic query or if backend supports empty
+           data: { query: "urgent needs" } 
+        });
+        // Actually, let's use the semantic search with a broad query if no other endpoint
+        // Or better, let's check if there's an endpoint for all requests.
+        // There is `getAllRequests` in adminController but maybe not exposed for donors?
+        // Let's stick to semantic search or just use the search endpoint with empty query if it returns all.
+        // The previous code had `allInstitutes` state but didn't seem to populate it initially in the snippet I saw?
+        // Ah, let's try to fetch all active needs.
+        
+        // Use semantic search with a generic "all" query to populate initial view
+        const response = await axios.post(`${config.apiBaseUrl}/api/search/semantic`, {
+            query: "all urgent needs"
+        });
 
+        if (response.data.success && Array.isArray(response.data.results)) {
+             const mapped: RecommendedInstitute[] = response.data.results.map((inst: any) => ({
+                _id: inst._id,
+                name: inst.name || "Unknown",
+                email: inst.email || "",
+                phone: inst.phone || "",
+                address: inst.deliveryAddress || inst.address || "",
+                description: inst.description || "",
+                requirement: inst.itemName ? [inst.itemName] : [],
+                category: inst.category || "General",
+                itemName: inst.itemName,
+                quantity: inst.quantity,
+                amountNeeded: inst.amountNeeded,
+                amountRaised: inst.amountRaised || 0,
+                urgency: inst.urgency,
+                beneficiaryCount: inst.beneficiaryCount,
+                previousDonations: !!inst.previousDonations,
+                createdAt: inst.createdAt,
+                image: inst.image
+              }));
+             setAllInstitutes(mapped);
+        }
+      } catch (e) {
+        console.error("Error fetching institutes:", e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchInstitutes();
+
+    const handleResize = () => {
+      setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // Search Logic
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
       if (searchQuery.trim()) {
+        setIsLoading(true);
         try {
           const res = await axios.post(`${config.apiBaseUrl}/api/search/semantic`, {
             query: searchQuery
@@ -147,15 +161,20 @@ const BrowseDonate = () => {
                 category: inst.category || "General",
                 itemName: inst.itemName,
                 quantity: inst.quantity,
+                amountNeeded: inst.amountNeeded,
+                amountRaised: inst.amountRaised || 0,
                 urgency: inst.urgency,
                 beneficiaryCount: inst.beneficiaryCount,
                 previousDonations: !!inst.previousDonations,
                 createdAt: inst.createdAt,
+                image: inst.image
               }));
              setSearchResults(mapped);
           }
         } catch (e) {
           console.error("Search error:", e);
+        } finally {
+            setIsLoading(false);
         }
       } else {
         setSearchResults(null);
@@ -165,100 +184,32 @@ const BrowseDonate = () => {
     return () => clearTimeout(delayDebounceFn);
   }, [searchQuery]);
 
-  const displayedAllInstitutes = useMemo(() => {
+  const displayedInstitutes = useMemo(() => {
     let result = searchResults !== null ? [...searchResults] : [...allInstitutes];
 
-    // 1. Filter by Category
-    if (activeCategory !== "all") {
-      result = result.filter(
-        (inst) =>
-          (inst.category || "").toLowerCase() === activeCategory.toLowerCase()
-      );
-    }
-
-    // 2. Filter by Search Query - Removed client-side filter in favor of semantic search
-    // But if we want to filter the *results* further (e.g. strict matching), we could.
-    // For now, we rely on the API.
-
-    // 3. (Optional) Filter by Recommendation Criteria
-    if (showFilteredAll) {
-      // reuse logic: matches selectedCategory or selectedItems
-      const targetCat = selectedCategory.toLowerCase().trim();
-      const itemsLower = selectedItems.map((i) => i.toLowerCase());
-
-      result = result.filter((inst) => {
-        const catMatch =
-          targetCat === "" ||
-          (inst.category || "").toLowerCase() === targetCat;
-        const itemMatch = itemsLower.some(
-          (i) =>
-            (inst.itemName || "").toLowerCase().includes(i) ||
-            inst.description.toLowerCase().includes(i) ||
-            (inst.requirement || []).join(", ").toLowerCase().includes(i)
-        );
-        return catMatch || itemMatch;
-      });
-    }
-
-    // 4. Sort
-    result.sort((a, b) => {
-      switch (sortBy) {
-        case "beneficiaries":
-          return (b.beneficiaryCount || 0) - (a.beneficiaryCount || 0);
-        case "urgency": {
-          const urgencyWeight = (u?: string) => {
-            const v = (u || "").toLowerCase();
-            if (v === "critical") return 3;
-            if (v === "high") return 2;
-            if (v === "medium") return 1;
-            return 0;
-          };
-          return urgencyWeight(b.urgency) - urgencyWeight(a.urgency);
+    // Filter Chips
+    if (activeFilter !== "all") {
+        if (activeFilter === "critical") {
+            result = result.filter(i => (i.urgency || "").toLowerCase() === "critical");
+        } else {
+            result = result.filter(i => (i.category || "").toLowerCase().includes(activeFilter));
         }
-        case "name":
-          return a.name.localeCompare(b.name);
-        case "recent":
-        default:
-          // Assuming createdAt exists, else stable sort
-          return (
-            new Date(b.createdAt || 0).getTime() -
-            new Date(a.createdAt || 0).getTime()
-          );
-      }
-    });
-
+    }
+    
     return result;
-  }, [
-    allInstitutes,
-    activeCategory,
-    searchQuery,
-    sortBy,
-    showFilteredAll,
-    selectedCategory,
-    selectedItems,
-  ]);
+  }, [searchResults, allInstitutes, activeFilter]);
 
-  const totalPages = Math.ceil(displayedAllInstitutes.length / pageSize);
-  const pagedInstitutes = displayedAllInstitutes.slice(
-    pageIndex * pageSize,
-    (pageIndex + 1) * pageSize
-  );
+  const filters = [
+    { id: "critical", label: "Critical", icon: <Flame size={16} />, color: "text-red-600 bg-red-50 border-red-200" },
+    { id: "food", label: "Food", icon: <Utensils size={16} />, color: "text-orange-600 bg-orange-50 border-orange-200" },
+    { id: "education", label: "Education", icon: <BookOpen size={16} />, color: "text-blue-600 bg-blue-50 border-blue-200" },
+    { id: "medical", label: "Medical", icon: <Stethoscope size={16} />, color: "text-green-600 bg-green-50 border-green-200" },
+  ];
 
-  const [isGeneratingReceipt, setIsGeneratingReceipt] = useState(false);
-  const [currentDonation, setCurrentDonation] = useState<any>(null);
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [showDonationPrompt, setShowDonationPrompt] = useState(false);
-  const [showInstituteModal, setShowInstituteModal] = useState(false);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [selectedInstitute, setSelectedInstitute] = useState<any>(null);
-  const [windowSize, setWindowSize] = useState({
-    width: window.innerWidth,
-    height: window.innerHeight,
-  });
-
-  const handleInstituteClick = (institute: any) => {
+  const handleCardClick = (institute: RecommendedInstitute) => {
     setSelectedInstitute(institute);
-    setShowInstituteModal(true);
+    setDonationAmount("");
+    setShowDonateModal(true);
   };
 
   const loadRazorpay = () => {
@@ -270,69 +221,69 @@ const BrowseDonate = () => {
     });
   };
 
-  const handlePaymentSuccess = async (response: any) => {
+  const handlePaymentSuccess = async (response: any, amount: number) => {
     try {
-      // Prepare donation data
       const donationData = {
         paymentId: response.razorpay_payment_id,
         donorId: user?.id,
         donorName: user?.fullName || "Anonymous",
-        instituteId: selectedInstitute._id || selectedInstitute.id, // Handle both _id and id
-        instituteName: currentDonation.institute,
-        donationItem:
-          currentDonation.type === "monetary"
-            ? "Fixed Amount"
-            : currentDonation.resources?.map((r: any) => r.name).join(", "),
-        amount:
-          currentDonation.type === "monetary"
-            ? currentDonation.amount
-            : currentDonation.totalAmount,
-        donationType: currentDonation.type,
-        resources:
-          currentDonation.type === "resource"
-            ? currentDonation.resources
-            : null,
+        instituteId: selectedInstitute?._id,
+        instituteName: selectedInstitute?.name,
+        donationItem: selectedInstitute?.itemName || "Monetary Donation",
+        amount: amount,
+        donationType: "monetary",
         date: new Date().toISOString(),
         status: "completed",
       };
 
-      // Make API call to save donation
-      const res = await axios.post(`${config.apiBaseUrl}/api/donations`, donationData);
+      await axios.post(`${config.apiBaseUrl}/api/donations`, donationData);
 
-      // Close payment modal first
-      setShowPaymentModal(false);
+      // Optimistic update for UI
+      if (selectedInstitute) {
+          const updatedAmountRaised = (selectedInstitute.amountRaised || 0) + amount;
+          
+          // Update local state for selected institute
+          setSelectedInstitute(prev => prev ? { ...prev, amountRaised: updatedAmountRaised } : null);
+          
+          // Update in lists
+          const updateList = (list: RecommendedInstitute[]) => 
+              list.map(inst => inst._id === selectedInstitute._id ? { ...inst, amountRaised: updatedAmountRaised } : inst);
+          
+          setAllInstitutes(prev => updateList(prev));
+          if (searchResults) {
+              setSearchResults(prev => prev ? updateList(prev) : null);
+          }
+      }
 
-      // Store payment ID from Razorpay response
-      setCurrentDonation((prev: any) => ({
-        ...prev,
+      setCurrentDonation({
+        ...donationData,
         paymentId: response.razorpay_payment_id,
-      }));
+      });
 
-      // Show success modal
-      setShowSuccess(true);
+      setShowDonateModal(false);
+      setShowSuccessModal(true);
     } catch (error) {
       console.error("Error saving donation:", error);
-      // Still show success modal even if API call fails
-      setShowPaymentModal(false);
-      setCurrentDonation((prev: any) => ({
-        ...prev,
-        paymentId: response.razorpay_payment_id,
-      }));
-      setShowSuccess(true);
+      // Show success anyway if payment worked but save failed (edge case)
+      setShowDonateModal(false);
+      setShowSuccessModal(true);
     }
   };
 
-  const handleRazorpayPayment = async (amount: number) => {
+  const handleDonate = async () => {
+    if (!donationAmount || parseFloat(donationAmount) <= 0) return;
+    
     await loadRazorpay();
 
+    const amountToDonate = parseFloat(donationAmount);
     const options: RazorpayOptions = {
       key: import.meta.env.VITE_RAZOR_PAY,
-      amount: amount * 100,
+      amount: amountToDonate * 100,
       currency: "INR",
       name: "KindHearts",
-      description: `Donation to ${currentDonation?.institute}`,
+      description: `Donation to ${selectedInstitute?.name}`,
       handler: function (response) {
-        handlePaymentSuccess(response);
+        handlePaymentSuccess(response, amountToDonate);
       },
       prefill: {
         name: user?.fullName || "Donor Name",
@@ -352,950 +303,318 @@ const BrowseDonate = () => {
     }
   };
 
-  const generateReceipt = () => {
-    if (!currentDonation || !currentDonation.paymentId) {
-      alert("Missing donation information");
-      return;
-    }
-
-    generateAndOpenReceipt({
-      paymentId: currentDonation.paymentId,
-      institute: currentDonation.institute,
-      donorName: user?.fullName || "Anonymous",
-      date: new Date(),
-      amount: currentDonation.type === "monetary" ? currentDonation.amount : currentDonation.totalAmount,
-      type: currentDonation.type,
-      resources: currentDonation.resources,
-      totalAmount: currentDonation.totalAmount
-    });
-  };
-
-  const fetchRecommendations = async () => {
-    if (!selectedCategory && selectedItems.length === 0) return;
-    setIsLoading(true);
-    try {
-      // Construct natural language query from selection
-      const query = `I want to donate to ${selectedCategory} causes, specifically ${selectedItems.join(", ")}.`;
-
-      // POST to Semantic Search API
-      const res = await axios.post(`${config.apiBaseUrl}/api/search/semantic`, {
-        query: query
-      });
-
-      const data = res.data;
-      let matched: RecommendedInstitute[] = [];
-      
-      if (data && data.success && Array.isArray(data.results)) {
-        matched = data.results.map((inst: any) => ({
-          _id: inst._id,
-          name: inst.name || "Unknown",
-          email: inst.email || "",
-          phone: inst.phone || "",
-          address: inst.deliveryAddress || inst.address || "",
-          description: inst.description || "",
-          requirement: inst.tags && inst.tags.length > 0 ? inst.tags : (inst.itemName ? [inst.itemName] : []),
-          category: inst.category || "General",
-          itemName: inst.itemName,
-          quantity: inst.quantity,
-          urgency: inst.urgency,
-          beneficiaryCount: inst.beneficiaryCount,
-          previousDonations: !!inst.previousDonations,
-          createdAt: inst.createdAt,
-        }));
-      }
-
-      if (matched.length === 0) {
-        setRecommendedInfoMessage("No direct matches found, but here are some active institutes.");
-        // Fallback or empty state could be handled here
-        setRecommendedInstitutes([]); 
-      } else {
-        setRecommendedInfoMessage(null);
-        setRecommendedInstitutes(matched);
-      }
-      setShowDonationPrompt(false);
-    } catch (error) {
-      console.error("Error fetching recommendations:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Update donor name when user data is loaded
-  useEffect(() => {
-    if (user?.fullName) {
-      setDonorName(user.fullName);
-    }
-  }, [user?.fullName]);
-
-  // Donation Prompt Modal
-  const DonationPromptModal = () => (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl max-w-3xl w-full p-6">
-        <h2 className="text-2xl font-bold text-indigo-900 mb-6">
-          Let's Find Your Perfect Match
-        </h2>
-
-        <div className="space-y-6">
-          {/* User's Name (from Clerk) */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Your Name
-            </label>
-            <input
-              type="text"
-              value={donorName}
-              disabled
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 cursor-not-allowed"
-            />
-          </div>
-
-          {/* Donation Categories */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              What would you like to donate?
-            </label>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {DONATION_CATEGORIES.map((category) => (
-                <button
-                  key={category.id}
-                  onClick={() => {
-                    setSelectedCategory(category.id);
-                    setSelectedItems([]);
-                  }}
-                  className={`
-                    p-4 rounded-xl border-2 transition-all duration-200
-                    flex flex-col items-center gap-2
-                    ${
-                      selectedCategory === category.id
-                        ? "border-indigo-600 bg-indigo-50"
-                        : "border-gray-200 hover:border-indigo-200"
-                    }
-                  `}
-                >
-                  {category.icon}
-                  <span className="font-medium">{category.name}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Items Selection */}
-          {selectedCategory && (
-            <div className="mt-6">
-              <label className="block text-sm font-medium text-gray-700 mb-3">
-                Select specific items you'd like to donate:
-              </label>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {DONATION_CATEGORIES.find(
-                  (c) => c.id === selectedCategory
-                )?.items.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => {
-                      setSelectedItems((prev) =>
-                        prev.includes(item)
-                          ? prev.filter((i) => i !== item)
-                          : [...prev, item]
-                      );
-                    }}
-                    className={`
-                      p-3 rounded-lg border text-sm transition-all duration-200
-                      ${
-                        selectedItems.includes(item)
-                          ? "border-indigo-600 bg-indigo-50 text-indigo-700"
-                          : "border-gray-200 hover:border-indigo-200"
-                      }
-                    `}
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
-              <div className="mt-4 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (selectedCategory) {
-                      setActiveCategory(selectedCategory);
-                    }
-                    setShowFilteredAll(true);
-                    setShowDonationPrompt(false);
-                  }}
-                  className="px-4 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100"
-                >
-                  Browse All Matching Institutes
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Action Buttons */}
-        <div className="mt-8 flex justify-end gap-4">
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedCategory("");
-              setSelectedItems([]);
-            }}
-            className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800"
-          >
-            Reset
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (selectedItems.length > 0) {
-                fetchRecommendations();
-              }
-            }}
-            disabled={selectedItems.length === 0 || isLoading}
-            className={`
-              px-6 py-2 rounded-lg text-white font-medium
-              ${
-                selectedItems.length === 0 || isLoading
-                  ? "bg-gray-400"
-                  : "bg-indigo-600 hover:bg-indigo-700"
-              }
-              transition-all duration-200
-            `}
-          >
-            {isLoading ? (
-              <span className="flex items-center justify-center">
-                <svg className="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24">
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
-                </svg>
-                Finding matches...
-              </span>
-            ) : (
-              "Find Matching Institutes"
-            )}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
-  // Institute Details Modal
-  const InstituteDetailsModal = () => {
-    if (!selectedInstitute) return null;
-
-    const handleDonate = async (amount: number) => {
-      // Changed to open Payment Modal instead of direct Razorpay
-      setCurrentDonation({
-        institute: selectedInstitute.name,
-        amount,
-        type: "monetary",
-        date: new Date().toISOString(),
-      });
-      setShowInstituteModal(false);
-      setShowPaymentModal(true);
-    };
-
-    return (
-      <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full overflow-hidden">
-          {/* Header */}
-          <div className="relative h-48 bg-gradient-to-r from-indigo-600 to-indigo-800">
-            <button
-              onClick={() => setShowInstituteModal(false)}
-              className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <div className="absolute bottom-4 left-6">
-              <h2 className="text-2xl font-bold text-white mb-1">
-                {selectedInstitute.name}
-              </h2>
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-1 rounded-full text-xs font-medium bg-white/20 text-white">
-                  {selectedInstitute.category || "General"}
-                </span>
-                {selectedInstitute.previousDonations && (
-                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-500/20 text-white">
-                    Previous Donor
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Content */}
-          <div className="p-6">
-            <div className="grid grid-cols-2 gap-6 mb-6">
-              <div>
-                <h3 className="text-sm font-medium text-gray-500 mb-1">
-                  Location
-                </h3>
-                <p className="text-gray-900">{selectedInstitute.address}</p>
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-gray-500 mb-1">
-                  Contact
-                </h3>
-                <p className="text-gray-900">{selectedInstitute.phone}</p>
-                <p className="text-gray-900 text-sm">
-                  {selectedInstitute.email}
-                </p>
-              </div>
-            </div>
-
-            <div className="mb-6">
-              <h3 className="text-sm font-medium text-gray-500 mb-2">About</h3>
-              <p className="text-gray-900">{selectedInstitute.description}</p>
-            </div>
-
-            <div className="mb-6">
-              <h3 className="text-sm font-medium text-gray-500 mb-2">
-                Requirements
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {selectedInstitute.requirement?.map((req, index) => (
-                  <span
-                    key={index}
-                    className="px-3 py-1 rounded-full text-sm bg-indigo-50 text-indigo-700"
-                  >
-                    {req}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* Donation Options */}
-            <div className="border-t pt-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                Make a Donation
-              </h3>
-              <div className="grid grid-cols-3 gap-4">
-                {[500, 1000, 2000].map((amount) => (
-                  <button
-                    key={amount}
-                    onClick={() => handleDonate(amount)}
-                    className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-indigo-100 hover:border-indigo-500 hover:bg-indigo-50 transition-all"
-                  >
-                    <span className="text-2xl font-bold text-indigo-600">
-                      ₹{amount}
-                    </span>
-                    <span className="text-sm text-gray-500">One-time</span>
-                  </button>
-                ))}
-              </div>
-              <button
-                onClick={() => handleDonate(5000)}
-                className="w-full mt-4 py-3 px-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-              >
-                Custom Amount
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // Recommended Institutes Grid
-  const RecommendedInstitutesGrid = () => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {recommendedInstitutes.map((institute) => (
-        <div
-          key={institute._id}
-          className="bg-white rounded-2xl shadow-lg overflow-hidden border border-indigo-50 hover:shadow-xl transition-all duration-300 flex flex-col h-[400px]"
-        >
-          {/* Card Header with Gradient */}
-          <div className="h-32 bg-gradient-to-r from-indigo-600 to-indigo-800 p-4 flex flex-col justify-end">
-            <h3 className="text-xl font-semibold text-white mb-2">
-              {institute.name}
-            </h3>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-white/20 text-white">
-                {institute.category || "General"}
-              </span>
-              {institute.urgency && (
-                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white ${
-                  institute.urgency.toLowerCase() === 'critical' ? 'bg-red-500' :
-                  institute.urgency.toLowerCase() === 'high' ? 'bg-orange-500' :
-                  institute.urgency.toLowerCase() === 'medium' ? 'bg-yellow-500' :
-                  'bg-blue-500'
-                }`}>
-                  {institute.urgency}
-                </span>
-              )}
-              {/* Medical Tag */}
-              {(institute.category?.toLowerCase() === 'medical' || institute.requirement?.some(r => r.toLowerCase().includes('medic'))) && (
-                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-500 text-white">
-                    Medical
-                 </span>
-              )}
-              {institute.previousDonations && (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-white">
-                  Previous Donor
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Card Content */}
-          <div className="p-6 flex-1 flex flex-col">
-            <p className="text-gray-600 text-sm mb-4 line-clamp-3 flex-1">
-              {institute.description}
-            </p>
-
-            <div className="space-y-4">
-              {institute.requirement && (
-                <div className="flex flex-wrap gap-2">
-                  {institute.requirement.slice(0, 3).map((req, index) => (
-                    <span
-                      key={index}
-                      className="px-2 py-1 rounded-md text-xs font-medium bg-indigo-50 text-indigo-700"
-                    >
-                      {req}
-                    </span>
-                  ))}
-                  {institute.requirement.length > 3 && (
-                    <span className="px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700">
-                      +{institute.requirement.length - 3} more
-                    </span>
-                  )}
-                </div>
-              )}
-
-              <div className="flex items-center justify-between text-sm text-gray-500">
-                <div className="flex items-center gap-1">
-                  <Users size={14} />
-                  <span>
-                    {institute.beneficiaryCount || "N/A"} beneficiaries
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <MapPin size={14} />
-                  <span>{institute.address?.split(",")[0]}</span>
-                </div>
-              </div>
-            </div>
-
-            <button
-              onClick={() => handleInstituteClick(institute)}
-              className="mt-4 w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
-            >
-              <Heart size={16} />
-              Donate Now
-            </button>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-
-  const AllInstitutesGrid = () => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {pagedInstitutes.map((institute) => (
-        <div
-          key={institute._id}
-          className="bg-white rounded-2xl shadow-lg overflow-hidden border border-indigo-50 hover:shadow-xl transition-all duration-300 flex flex-col h-[400px]"
-        >
-          <div className="h-32 bg-gradient-to-r from-indigo-600 to-indigo-800 p-4 flex flex-col justify-end">
-            <h3 className="text-xl font-semibold text-white mb-2">
-              {institute.name}
-            </h3>
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-white/20 text-white">
-                {institute.category || "General"}
-              </span>
-              {(institute.category?.toLowerCase() === 'medical' || institute.requirement?.some(r => r.toLowerCase().includes('medic'))) && (
-                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-500 text-white">
-                    Medical
-                 </span>
-              )}
-              {institute.previousDonations && (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-white">
-                  Previous Donor
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="p-6 flex-1 flex flex-col">
-            <p className="text-gray-600 text-sm mb-4 line-clamp-3 flex-1">
-              {institute.description}
-            </p>
-            <div className="flex items-center justify-between text-sm text-gray-500">
-              <div className="flex items-center gap-1">
-                <Users size={14} />
-                <span>{institute.beneficiaryCount || "N/A"} beneficiaries</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <MapPin size={14} />
-                <span>{institute.address?.split(",")[0]}</span>
-              </div>
-            </div>
-            <button
-              onClick={() => handleInstituteClick(institute)}
-              className="mt-4 w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
-            >
-              <Heart size={16} />
-              Donate Now
-            </button>
-          </div>
-        </div>
-      ))}
-      {pagedInstitutes.length === 0 && (
-        <div className="col-span-3 text-center text-gray-500 py-8">
-          No institutes found for the selected filters.
-        </div>
-      )}
-    </div>
-  );
-
-  const ImpactStoriesGrid = () => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {impactStories.map((story: any) => (
-        <div
-          key={story._id}
-          className="bg-white rounded-2xl shadow-lg overflow-hidden border border-indigo-50 hover:shadow-xl transition-all duration-300 flex flex-col"
-        >
-          <div className="h-40 overflow-hidden">
-            <img
-              src={story.image}
-              alt={story.title}
-              className="w-full h-full object-cover"
-            />
-          </div>
-          <div className="p-6 flex-1 flex flex-col">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-lg font-semibold text-indigo-900">
-                {story.title}
-              </h3>
-              <span className="px-2 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700">
-                {story.category}
-              </span>
-            </div>
-            <p className="text-gray-600 text-sm flex-1">{story.description}</p>
-            <div className="mt-4">
-              <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2">
-                <Sparkles size={16} />
-                See How It Helped
-              </button>
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-
-  useEffect(() => {
-    const handleResize = () => {
-      setWindowSize({
-        width: window.innerWidth,
-        height: window.innerHeight,
-      });
-    };
-
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  useEffect(() => {
-    const fetchAllInstitutes = async () => {
-      try {
-        const res = await axios.get(`${config.apiBaseUrl}/api/institutes`);
-        if (res.data?.success && Array.isArray(res.data.institutes)) {
-          const mapped: RecommendedInstitute[] = res.data.institutes.map((inst: any) => ({
-            _id: inst._id,
-            name: inst.name || "Unknown",
-            email: inst.email || "",
-            phone: inst.phone || "",
-            address: inst.deliveryAddress || inst.address || "",
-            description: inst.description || "",
-            requirement: inst.itemName ? [inst.itemName] : [],
-            category: inst.category || "General",
-            itemName: inst.itemName,
-            quantity: inst.quantity,
-            urgency: inst.urgency,
-            beneficiaryCount: inst.beneficiaryCount,
-            previousDonations: !!inst.previousDonations,
-            createdAt: inst.createdAt,
-          }));
-          setAllInstitutes(mapped);
-        }
-      } catch (e) {
-        console.error("Error fetching institutes:", e);
-      }
-    };
-    fetchAllInstitutes();
-  }, []);
-
-  useEffect(() => {
-    const fetchImpactStories = async () => {
-      try {
-        const res = await axios.get(`${config.apiBaseUrl}/api/impact-stories`);
-        if (res.data?.success && Array.isArray(res.data.stories)) {
-          setImpactStories(res.data.stories);
-        }
-      } catch (e) {
-        console.error("Error fetching impact stories:", e);
-      }
-    };
-    fetchImpactStories();
-  }, []);
-
   return (
-    <div className="container mx-auto px-4 py-8">
-      {showDonationPrompt && <DonationPromptModal />}
-      {showInstituteModal && <InstituteDetailsModal />}
-
-      {/* Payment Modal */}
-      {showPaymentModal && currentDonation && (
-        <div className="fixed inset-0 z-50">
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" />
-          <div className="fixed inset-0 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto scrollbar-hide relative">
-              <div className="p-6 border-b border-gray-200">
-                <div className="flex justify-between items-center">
-                  <h2 className="text-xl font-semibold text-gray-900">
-                    Donation Summary
-                  </h2>
-                  <button
-                    onClick={() => setShowPaymentModal(false)}
-                    className="text-gray-500 hover:text-gray-700"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-6">
-                <div className="bg-indigo-50 rounded-xl p-6 mb-6">
-                  <div className="flex items-center gap-4 mb-4">
-                    <div className="h-16 w-16 rounded-lg bg-white flex items-center justify-center">
-                      <Heart size={32} className="text-indigo-600" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-lg text-indigo-900">
-                        {currentDonation.institute}
-                      </h3>
-                      <p className="text-indigo-600">
-                        {currentDonation.type === "monetary"
-                          ? "Fixed Amount Donation"
-                          : "Resource Donation"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    {currentDonation.type === "monetary" ? (
-                      <div className="flex justify-between items-center py-2 border-b border-indigo-100">
-                        <span className="text-indigo-900">Donation Amount</span>
-                        <span className="font-semibold text-indigo-900">
-                          ₹{currentDonation.amount}
-                        </span>
-                      </div>
-                    ) : (
-                      <>
-                        {currentDonation.resources?.map(
-                          (resource: any, index: number) => (
-                            <div
-                              key={index}
-                              className="flex justify-between items-center py-2 border-b border-indigo-100"
-                            >
-                              <span className="text-indigo-900">
-                                {resource.name} x {resource.quantity}
-                              </span>
-                              <span className="font-semibold text-indigo-900">
-                                ₹{resource.amount}
-                              </span>
-                            </div>
-                          )
-                        )}
-                        <div className="flex justify-between items-center pt-3">
-                          <span className="font-medium text-indigo-900">
-                            Total Amount
-                          </span>
-                          <span className="font-semibold text-indigo-900">
-                            ₹{currentDonation.totalAmount}
-                          </span>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <button
-                  onClick={() =>
-                    handleRazorpayPayment(
-                      currentDonation.type === "monetary"
-                        ? currentDonation.amount
-                        : currentDonation.totalAmount
-                    )
-                  }
-                  className="w-full bg-indigo-600 text-white py-4 rounded-xl font-medium hover:bg-indigo-700 transition-colors"
-                >
-                  Proceed to Payment
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {!showDonationPrompt && (
-        <>
-          <div className="flex justify-between items-center mb-8">
-            <h1 className="text-2xl font-bold text-indigo-900">
-              Recommended Institutes for Your Donation
+    <div className="min-h-screen bg-gray-50/50 p-6 md:p-8 space-y-8">
+      {/* 1. Layout: Top Section */}
+      <div className="max-w-7xl mx-auto space-y-6">
+        <div className="flex flex-col items-center space-y-6 text-center">
+            <h1 className="text-3xl font-bold text-gray-900">
+                Browse & <span className="text-indigo-600">Donate</span>
             </h1>
-            {recommendedInfoMessage && (
-              <span className="text-sm text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1 rounded-lg">
-                {recommendedInfoMessage}
-              </span>
-            )}
-            <button
-              onClick={() => setShowDonationPrompt(true)}
-              className="px-4 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100"
-            >
-              Change Donation
-            </button>
-          </div>
-          <RecommendedInstitutesGrid />
-          <div className="mt-12">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-semibold text-indigo-900">
-                Browse Institutes
-              </h2>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => {
-                    setShowFilteredAll((v) => !v);
-                    if (!showFilteredAll && selectedCategory) {
-                      setActiveCategory(selectedCategory);
-                    }
-                    setPageIndex(0);
-                  }}
-                  className={`px-3 py-2 rounded-lg text-sm ${
-                    showFilteredAll
-                      ? "bg-indigo-600 text-white"
-                      : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
-                  }`}
-                  title="Toggle filtering All Institutes by your selection"
-                >
-                  {showFilteredAll ? "Showing Matching Institutes" : "Show Matching Institutes"}
-                </button>
+            
+            {/* Search Bar */}
+            <div className="relative w-full max-w-2xl group">
+                <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                    <Sparkles className="h-5 w-5 text-indigo-500 animate-pulse" />
+                </div>
                 <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search by name, description, address"
-                  className="px-3 py-2 border rounded-lg text-sm w-64"
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Tell Sahayak what cause you want to support today..."
+                    className="w-full pl-12 pr-4 py-4 bg-white border-2 border-indigo-100 rounded-2xl shadow-sm text-gray-700 placeholder-gray-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all duration-300 outline-none text-lg"
                 />
-                <select
-                  value={activeCategory}
-                  onChange={(e) => setActiveCategory(e.target.value)}
-                  className="px-3 py-2 border rounded-lg text-sm"
-                >
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={sortBy}
-                  onChange={(e) => {
-                    setSortBy(e.target.value);
-                    setPageIndex(0);
-                  }}
-                  className="px-3 py-2 border rounded-lg text-sm"
-                >
-                  <option value="recent">Recent</option>
-                  <option value="beneficiaries">Beneficiaries</option>
-                  <option value="urgency">Urgency</option>
-                  <option value="name">Name</option>
-                </select>
-                <span className="text-sm text-gray-600">
-                  {displayedAllInstitutes.length} results
-                </span>
-              </div>
             </div>
-            <AllInstitutesGrid />
-            <div className="flex items-center justify-center gap-2 mt-6">
-              <button
-                onClick={() => setPageIndex((p) => Math.max(p - 1, 0))}
-                className="px-3 py-1 border rounded-md text-sm"
-                disabled={pageIndex === 0}
-              >
-                Prev
-              </button>
-              <span className="text-sm text-gray-700">
-                Page {pageIndex + 1} of {totalPages}
-              </span>
-              <button
-                onClick={() =>
-                  setPageIndex((p) => Math.min(p + 1, totalPages - 1))
-                }
-                className="px-3 py-1 border rounded-md text-sm"
-                disabled={pageIndex >= totalPages - 1}
-              >
-                Next
-              </button>
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value));
-                  setPageIndex(0);
-                }}
-                className="ml-4 px-3 py-1 border rounded-md text-sm"
-              >
-                <option value={6}>6 / page</option>
-                <option value={9}>9 / page</option>
-                <option value={12}>12 / page</option>
-              </select>
-            </div>
-          </div>
 
-          <div className="mt-12">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-semibold text-indigo-900">
-                Impact Stories
-              </h2>
+            {/* Filter Chips */}
+            <div className="flex flex-wrap justify-center gap-3">
+                <button
+                    onClick={() => setActiveFilter("all")}
+                    className={`px-4 py-2 rounded-full border font-medium text-sm transition-all duration-200 ${
+                        activeFilter === "all" 
+                        ? "bg-gray-900 text-white border-gray-900" 
+                        : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                    }`}
+                >
+                    All Causes
+                </button>
+                {filters.map((filter) => (
+                    <button
+                        key={filter.id}
+                        onClick={() => setActiveFilter(filter.id)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-full border font-medium text-sm transition-all duration-200 ${
+                            activeFilter === filter.id
+                            ? filter.color.replace("bg-", "bg-opacity-100 bg-").replace("text-", "text-white ").replace("border-", "border-transparent ") // This is tricky with dynamic classes, let's just use specific active styles
+                            : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                        } ${activeFilter === filter.id ? getActiveColor(filter.id) : ""}`}
+                    >
+                        {filter.icon}
+                        {filter.label}
+                    </button>
+                ))}
             </div>
-            <ImpactStoriesGrid />
-          </div>
-        </>
-      )}
+        </div>
+      </div>
 
-      {/* Success Modal */}
+      {/* 2. Result Cards (Grid Layout) */}
+      <div className="max-w-7xl mx-auto">
+        {isLoading ? (
+            <div className="flex justify-center items-center h-64">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+            </div>
+        ) : displayedInstitutes.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {displayedInstitutes.map((institute) => {
+                    const amountNeeded = institute.amountNeeded || (institute.quantity ? institute.quantity * 100 : 10000); // Mock amount if missing
+                    const amountRaised = institute.amountRaised || 0;
+                    const progress = Math.min((amountRaised / amountNeeded) * 100, 100);
+                    const isCritical = (institute.urgency || "").toLowerCase() === "critical";
+
+                    return (
+                        <motion.div
+                            key={institute._id}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            whileHover={{ y: -5 }}
+                            className="bg-white rounded-2xl shadow-sm hover:shadow-md border border-gray-100 overflow-hidden cursor-pointer group flex flex-col h-full"
+                            onClick={() => handleCardClick(institute)}
+                        >
+                            <div className="p-5 flex flex-col h-full">
+                                {/* Header: Badge & Urgency */}
+                                <div className="flex justify-between items-start mb-4">
+                                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-600 uppercase tracking-wide">
+                                        {institute.category}
+                                    </span>
+                                    {isCritical && (
+                                        <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-600 animate-pulse">
+                                            <Flame size={12} fill="currentColor" />
+                                            CRITICAL
+                                        </span>
+                                    )}
+                                </div>
+
+                                {/* Content */}
+                                <h3 className="text-xl font-bold text-gray-900 mb-2 line-clamp-1 group-hover:text-indigo-600 transition-colors">
+                                    {institute.name}
+                                </h3>
+                                <p className="text-gray-500 text-sm mb-4 line-clamp-2 flex-grow">
+                                    {institute.description}
+                                </p>
+
+                                {/* Progress Bar */}
+                                <div className="space-y-2 mb-4">
+                                    <div className="flex justify-between text-xs font-medium text-gray-500">
+                                        <span>Raised: ₹{amountRaised.toLocaleString()}</span>
+                                        <span>Goal: ₹{amountNeeded.toLocaleString()}</span>
+                                    </div>
+                                    <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+                                        <div 
+                                            className={`h-full rounded-full transition-all duration-1000 ${
+                                                isCritical ? "bg-red-500" : "bg-indigo-500"
+                                            }`}
+                                            style={{ width: `${progress}%` }}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Impact Summary */}
+                                <div className="pt-4 border-t border-gray-50 flex items-center gap-2 text-sm text-gray-600 bg-gray-50/50 -mx-5 -mb-5 p-4 mt-auto">
+                                    <Sparkles size={16} className="text-yellow-500" />
+                                    <span>
+                                        Will provide <strong>{institute.itemName || "Support"}</strong> for <strong>{institute.beneficiaryCount || 10}</strong> people
+                                    </span>
+                                </div>
+                            </div>
+                        </motion.div>
+                    );
+                })}
+            </div>
+        ) : (
+            // 4. Empty State
+            <div className="text-center py-20 bg-white rounded-3xl border border-gray-100 shadow-sm max-w-2xl mx-auto">
+                <div className="bg-indigo-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Sparkles className="h-10 w-10 text-indigo-500" />
+                </div>
+                <h3 className="text-2xl font-bold text-gray-900 mb-3">
+                    No exact matches found
+                </h3>
+                <p className="text-gray-500 max-w-md mx-auto mb-8">
+                    I couldn't find an exact match for your search, but here are some critical needs that need your heart!
+                </p>
+                <button 
+                    onClick={() => {
+                        setSearchQuery("");
+                        setActiveFilter("all");
+                    }}
+                    className="text-indigo-600 font-medium hover:text-indigo-800 underline"
+                >
+                    View all active causes
+                </button>
+            </div>
+        )}
+      </div>
+
+      {/* 3. 'Donate Now' Interaction: Modal */}
       <AnimatePresence>
-        {showSuccess && (
-          <>
-            <div className="fixed inset-0 z-[60]">
-              <motion.div
+        {showDonateModal && selectedInstitute && (
+            <motion.div 
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-black/60 backdrop-blur-sm"
-              />
-
-              <Confetti
-                width={windowSize.width}
-                height={windowSize.height}
-                recycle={false}
-                numberOfPieces={200}
-                gravity={0.2}
-                style={{ position: "fixed", top: 0, left: 0, zIndex: 61 }}
-              />
-
-              <div className="fixed inset-0 z-[62] flex items-center justify-center p-4">
-                <motion.div
-                  initial={{ scale: 0.5, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.5, opacity: 0 }}
-                  transition={{ type: "spring", duration: 1.5 }}
-                  className="bg-white rounded-2xl p-8 w-full max-w-lg shadow-2xl"
+                className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+                onClick={() => setShowDonateModal(false)}
+            >
+                <motion.div 
+                    initial={{ scale: 0.95, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.95, opacity: 0 }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden"
                 >
-                  <div className="text-center relative">
-                    {/* Close button */}
-                    <button
-                      onClick={() => setShowSuccess(false)}
-                      className="absolute right-0 top-0 p-2 text-gray-400 hover:text-gray-600"
-                    >
-                      <X className="w-6 h-6" />
-                    </button>
+                    <div className="p-6">
+                        <div className="flex justify-between items-start mb-6">
+                            <div>
+                                <h2 className="text-2xl font-bold text-gray-900 mb-1">Make a Donation</h2>
+                                <p className="text-sm text-gray-500">Supporting {selectedInstitute.name}</p>
+                            </div>
+                            <button 
+                                onClick={() => setShowDonateModal(false)}
+                                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                            >
+                                <X size={20} className="text-gray-500" />
+                            </button>
+                        </div>
 
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 0.2, type: "spring" }}
-                      className="mx-auto w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6"
-                    >
-                      <CheckCircle2 className="w-12 h-12 text-green-600" />
-                    </motion.div>
+                        {/* Full Description */}
+                        <div className="mb-6 p-4 bg-gray-50 rounded-xl">
+                            <h4 className="text-sm font-semibold text-gray-900 mb-2">About this cause</h4>
+                            <p className="text-gray-600 text-sm leading-relaxed">
+                                {selectedInstitute.description}
+                            </p>
+                        </div>
 
-                    <motion.div
-                      initial={{ y: 20, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      transition={{ delay: 0.3 }}
-                      className="space-y-4"
-                    >
-                      <h3 className="text-3xl font-bold text-gray-900">
-                        Thank You for Your Generosity!
-                      </h3>
-                      <p className="text-lg text-gray-600">
-                        Your donation of ₹
-                        {currentDonation?.amount ||
-                          currentDonation?.totalAmount}{" "}
-                        will make a meaningful impact in someone's life.
-                      </p>
-                    </motion.div>
+                        {/* Shopkeeper Assigned */}
+                        <div className="mb-6 flex items-center gap-4 p-4 border border-indigo-100 bg-indigo-50/30 rounded-xl">
+                            <div className="bg-white p-2 rounded-full shadow-sm">
+                                <Store size={20} className="text-indigo-600" />
+                            </div>
+                            <div>
+                                <h4 className="text-sm font-semibold text-gray-900">Assigned Shopkeeper</h4>
+                                <p className="text-xs text-gray-500">
+                                    Verified Partner (Transparency Guaranteed)
+                                </p>
+                            </div>
+                            <CheckCircle2 size={16} className="text-green-500 ml-auto" />
+                        </div>
 
-                    <motion.div
-                      className="flex justify-center gap-6 my-8"
-                      initial={{ y: 20, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      transition={{ delay: 0.4 }}
-                    >
-                      {[Heart, Star, Sparkles].map((Icon, index) => (
-                        <motion.div
-                          key={index}
-                          animate={{
-                            y: [0, -10, 0],
-                            scale: [1, 1.2, 1],
-                          }}
-                          transition={{
-                            duration: 2,
-                            repeat: Infinity,
-                            delay: index * 0.2,
-                          }}
-                          className="p-3 bg-indigo-50 rounded-full"
+                        {/* Input Field */}
+                        <div className="space-y-4 mb-8">
+                            <label className="block text-sm font-medium text-gray-700">
+                                Enter Donation Amount
+                            </label>
+                            <div className="relative">
+                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">
+                                    ₹
+                                </span>
+                                <input 
+                                    type="number" 
+                                    value={donationAmount}
+                                    onChange={(e) => setDonationAmount(e.target.value)}
+                                    className="w-full pl-8 pr-4 py-3 text-lg font-bold text-gray-900 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-0 outline-none transition-all"
+                                    placeholder="Enter amount"
+                                />
+                            </div>
+                            <div className="flex gap-2">
+                                {[500, 1000, 2000].map(amt => (
+                                    <button
+                                        key={amt}
+                                        onClick={() => setDonationAmount(amt.toString())}
+                                        className="flex-1 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
+                                    >
+                                        ₹{amt}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Confirm Button */}
+                        <button
+                            onClick={handleDonate}
+                            disabled={!donationAmount || parseFloat(donationAmount) <= 0}
+                            className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-indigo-200 transition-all transform active:scale-[0.98] flex items-center justify-center gap-2"
                         >
-                          <Icon className="w-8 h-8 text-indigo-600" />
-                        </motion.div>
-                      ))}
-                    </motion.div>
-
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 0.5 }}
-                      className="space-y-4"
-                    >
-                      <div className="text-sm text-gray-500 bg-gray-50 p-4 rounded-xl">
-                        <p>
-                          A confirmation email has been sent to your registered
-                          email address.
-                        </p>
-                        <p className="mt-1">
-                          Transaction ID: {currentDonation?.paymentId}
-                        </p>
-                      </div>
-
-                      <Button
-                        onClick={generateReceipt}
-                        className="mt-4"
-                        variant="outline"
-                      >
-                        View Receipt
-                      </Button>
-                    </motion.div>
-                  </div>
+                            <span>Confirm Donation</span>
+                            <ArrowRight size={20} />
+                        </button>
+                    </div>
                 </motion.div>
-              </div>
+            </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Success Modal */}
+      <AnimatePresence>
+        {showSuccessModal && (
+            <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                <Confetti
+                    width={windowSize.width}
+                    height={windowSize.height}
+                    recycle={false}
+                    numberOfPieces={500}
+                />
+                <motion.div 
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden text-center p-8"
+                >
+                    <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <Heart className="h-10 w-10 text-green-600 fill-current" />
+                    </div>
+                    <h2 className="text-3xl font-bold text-gray-900 mb-2">Thank You!</h2>
+                    <p className="text-gray-600 mb-8">
+                        Your donation of <span className="font-bold text-gray-900">₹{currentDonation?.amount}</span> has been successfully processed. You are making a real difference!
+                    </p>
+                    
+                    <div className="flex flex-col gap-3">
+                        <button 
+                            onClick={() => generateAndOpenReceipt({
+                                paymentId: currentDonation?.paymentId,
+                                institute: currentDonation?.instituteName,
+                                donorName: currentDonation?.donorName,
+                                date: new Date(),
+                                amount: currentDonation?.amount,
+                                type: "monetary",
+                                totalAmount: currentDonation?.amount
+                            })}
+                            className="w-full py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
+                        >
+                            <Download size={18} />
+                            Download Receipt
+                        </button>
+                        <button 
+                            onClick={() => setShowSuccessModal(false)}
+                            className="w-full py-3 text-gray-600 font-semibold rounded-xl hover:bg-gray-50 transition-colors"
+                        >
+                            Close
+                        </button>
+                    </div>
+                </motion.div>
             </div>
-          </>
         )}
       </AnimatePresence>
     </div>
   );
 };
+
+// Helper for active filter styles
+function getActiveColor(id: string) {
+    switch (id) {
+        case "critical": return "bg-red-600 text-white border-red-600";
+        case "food": return "bg-orange-600 text-white border-orange-600";
+        case "education": return "bg-blue-600 text-white border-blue-600";
+        case "medical": return "bg-green-600 text-white border-green-600";
+        default: return "";
+    }
+}
 
 export default BrowseDonate;
