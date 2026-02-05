@@ -86,25 +86,11 @@ const BrowseDonate = () => {
     const fetchInstitutes = async () => {
       setIsLoading(true);
       try {
-        const res = await axios.get(`${config.apiBaseUrl}/api/search/semantic`, {
-           // Sending empty query to get all or use a different endpoint if available. 
-           // Reusing semantic search with generic query or if backend supports empty
-           data: { query: "urgent needs" } 
-        });
-        // Actually, let's use the semantic search with a broad query if no other endpoint
-        // Or better, let's check if there's an endpoint for all requests.
-        // There is `getAllRequests` in adminController but maybe not exposed for donors?
-        // Let's stick to semantic search or just use the search endpoint with empty query if it returns all.
-        // The previous code had `allInstitutes` state but didn't seem to populate it initially in the snippet I saw?
-        // Ah, let's try to fetch all active needs.
-        
-        // Use semantic search with a generic "all" query to populate initial view
-        const response = await axios.post(`${config.apiBaseUrl}/api/search/semantic`, {
-            query: "all urgent needs"
-        });
+        // Fetch all active institutes/requests directly
+        const response = await axios.get(`${config.apiBaseUrl}/api/institutes`);
 
-        if (response.data.success && Array.isArray(response.data.results)) {
-             const mapped: RecommendedInstitute[] = response.data.results.map((inst: any) => ({
+        if (response.data.success && Array.isArray(response.data.institutes)) {
+             const mapped: RecommendedInstitute[] = response.data.institutes.map((inst: any) => ({
                 _id: inst._id,
                 name: inst.name || "Unknown",
                 email: inst.email || "",
