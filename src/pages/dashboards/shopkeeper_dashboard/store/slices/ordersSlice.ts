@@ -90,54 +90,72 @@ export const fetchOrders = () => async (dispatch: AppDispatch, getState: () => R
   dispatch(setLoading(true));
   try {
     const state = getState();
-    const shopId: string | undefined = state.auth.user?.shopId;
+    const user = state.auth.user;
+    // Handle both direct shopId and Clerk metadata pattern
+    const shopId: string | undefined = user?.shopId || (user?.publicMetadata as any)?.shopId;
+    
     if (!shopId) {
+      console.warn('Fetch Orders: No shop ID found in user profile');
       throw new Error('No shop associated with current user');
     }
 
+    // Ensure we are hitting the correct backend route: /api/orders/:shopId
     const ordersRes = await fetch(`${config.apiBaseUrl}/api/orders/${shopId}`);
     if (!ordersRes.ok) {
       const err = await ordersRes.json().catch(() => ({}));
-      throw new Error(err.message || 'Failed to fetch orders');
+      throw new Error(err.message || `Failed to fetch orders: ${ordersRes.statusText}`);
     }
+    
     const data = await ordersRes.json();
-    const backendOrders = Array.isArray(data.orders) ? data.orders : [];
-
-    const mapped: Order[] = backendOrders.map((o: BackendOrder) => {
-      const mapStatus = (s: string): OrderStatus => {
-        if (s === 'accepted') return 'accepted';
-        if (s === 'packaging') return 'packaging';
-        if (s === 'ready') return 'ready';
-        if (s === 'completed') return 'delivered';
-        if (s === 'cancelled') return 'rejected';
-        return 'pending';
-      };
-      return {
-        id: o._id,
-        instituteId: o.shop?._id || 'unknown',
-        instituteName: o.shop?.name || 'Unknown Institute',
-        items: (o.items || []).map((it: BackendOrderItem) => ({
+    
+    if (data.success && Array.isArray(data.orders)) {
+      const mappedOrders: Order[] = data.orders.map((bo: BackendOrder) => ({
+        id: bo._id,
+        instituteId: bo.shop?._id || 'unknown',
+        instituteName: bo.shop?.name || 'Unknown Institute',
+        items: (bo.items || []).map((it: BackendOrderItem) => ({
           name: it.name,
           quantity: it.quantity,
           price: it.price,
         })),
-        totalAmount: o.totalAmount || 0,
-        status: mapStatus(o.status),
-        createdAt: o.createdAt,
-        updatedAt: o.updatedAt,
-        deliveryAddress: o.deliveryAddress || 'N/A',
-        contactPerson: o.contactPerson || 'N/A',
-        contactNumber: o.contactNumber || 'N/A',
-        paymentStatus: o.paymentStatus || 'pending',
-        notes: o.notes || undefined,
-      };
-    });
-
-    dispatch(setOrders(mapped));
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch orders';
-    dispatch(setError(message));
-  } finally {
+        totalAmount: bo.totalAmount || 0,
+        status: ((bo.status as string) || 'pending') as OrderStatus,
+        createdAt: bo.createdAt || new Date().toISOString(),
+        updatedAt: bo.updatedAt || new Date().toISOString(),
+        deliveryAddress: bo.deliveryAddress || 'N/A',
+        contactPerson: bo.contactPerson || 'N/A',
+        contactNumber: bo.contactNumber || 'N/A',
+        paymentStatus: (bo.paymentStatus as any) || 'pending',
+        notes: bo.notes || undefined,
+      }));
+      dispatch(setOrders(mappedOrders));
+    } else if (Array.isArray(data)) {
+      const mappedOrders: Order[] = data.map((bo: BackendOrder) => ({
+        id: bo._id,
+        instituteId: bo.shop?._id || 'unknown',
+        instituteName: bo.shop?.name || 'Unknown Institute',
+        items: (bo.items || []).map((it: BackendOrderItem) => ({
+          name: it.name,
+          quantity: it.quantity,
+          price: it.price,
+        })),
+        totalAmount: bo.totalAmount || 0,
+        status: ((bo.status as string) || 'pending') as OrderStatus,
+        createdAt: bo.createdAt || new Date().toISOString(),
+        updatedAt: bo.updatedAt || new Date().toISOString(),
+        deliveryAddress: bo.deliveryAddress || 'N/A',
+        contactPerson: bo.contactPerson || 'N/A',
+        contactNumber: bo.contactNumber || 'N/A',
+        paymentStatus: (bo.paymentStatus as any) || 'pending',
+        notes: bo.notes || undefined,
+      }));
+      dispatch(setOrders(mappedOrders));
+    }
+    
+    dispatch(setLoading(false));
+  } catch (error: any) {
+    console.error("Error fetching orders:", error);
+    dispatch(setError(error.message || 'Failed to fetch orders'));
     dispatch(setLoading(false));
   }
 };

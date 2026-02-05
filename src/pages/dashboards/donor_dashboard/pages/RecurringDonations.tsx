@@ -26,12 +26,22 @@ const RecurringDonations = () => {
     frequency: 'Monthly'
   });
 
-  // Sample data
+  // Calculate stats from list
+  const activeSubscriptions = list.filter(d => d.status === 'active').length;
+  const monthlyImpact = list
+    .filter(d => d.status === 'active')
+    .reduce((sum, d) => sum + (d.amount || 0), 0);
+  const yearlyProjection = monthlyImpact * 12;
+  
+  const nextDebitDate = new Date();
+  nextDebitDate.setMonth(nextDebitDate.getMonth() + 1);
+  nextDebitDate.setDate(1); // Assuming 1st of next month
+  
   const recurringStats = {
-    activeSubscriptions: '3',
-    monthlyImpact: '₹2,450',
-    totalRecurring: '₹29,400',
-    nextDebit: 'June 1, 2025'
+    activeSubscriptions: activeSubscriptions.toString(),
+    monthlyImpact: `₹${monthlyImpact.toLocaleString()}`,
+    totalRecurring: `₹${yearlyProjection.toLocaleString()}`,
+    nextDebit: nextDebitDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
   };
 
   useEffect(() => {

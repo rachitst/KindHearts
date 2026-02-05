@@ -12,12 +12,16 @@ import {
   Clock,
   CheckCircle2,
   Truck,
-  AlertCircle
+  AlertCircle,
+  Heart
 } from 'lucide-react';
 import { generateAndOpenReceipt } from '../../../../utils/receiptGenerator';
+import { config } from '../../../../config/env';
+import { useNavigate } from 'react-router-dom';
 
 const MyDonations = () => {
   const { user } = useUser();
+  const navigate = useNavigate();
   const [timeFilter, setTimeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [donations, setDonations] = useState<any[]>([]);
@@ -26,7 +30,7 @@ const MyDonations = () => {
     const fetchDonations = async () => {
       if (user?.fullName) {
         try {
-           const response = await axios.get(`http://localhost:5000/api/donations?donor=${user.fullName}`);
+           const response = await axios.get(`${config.apiBaseUrl}/api/donations?donor=${user.fullName}`);
            if (response.data.success) {
              const mapped = response.data.donations.map((d: any) => ({
                id: d._id,
@@ -192,6 +196,23 @@ const MyDonations = () => {
 
       {/* Donations List */}
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        {donations.length === 0 ? (
+          <div className="p-12 text-center flex flex-col items-center justify-center">
+             <div className="bg-indigo-50 p-4 rounded-full mb-4">
+                <Heart className="w-12 h-12 text-indigo-500" />
+             </div>
+             <h3 className="text-xl font-bold text-gray-900 mb-2">No Impact Yet</h3>
+             <p className="text-gray-500 max-w-md mb-6">
+               Your journey of kindness starts here. Support a critical need today to see your impact grow!
+             </p>
+             <button
+               onClick={() => navigate('/donor/browse')}
+               className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+             >
+               Start Donating
+             </button>
+          </div>
+        ) : (
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -200,63 +221,64 @@ const MyDonations = () => {
                   Donation Details
                 </th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Institute & Cause
+                  Amount
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Date
                 </th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Status
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Impact
-                </th>
                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
+                  Receipt
                 </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {donations.map((donation) => (
-                <tr key={donation.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4">
+                <tr key={donation.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
-                      <div className="flex-shrink-0 h-10 w-10 flex items-center justify-center rounded-lg bg-gray-100">
-                        {donation.type === 'monetary' ? (
-                          <Calendar size={20} className="text-gray-600" />
+                      <div className={`p-2 rounded-lg ${donation.type === 'item' ? 'bg-blue-50' : 'bg-emerald-50'} mr-3`}>
+                        {donation.type === 'item' ? (
+                          <Package size={20} className="text-blue-500" />
                         ) : (
-                          <Package size={20} className="text-gray-600" />
+                          <TrendingUp size={20} className="text-emerald-500" />
                         )}
                       </div>
-                      <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900">{donation.amount}</div>
-                        <div className="text-sm text-gray-500">{donation.date}</div>
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">{donation.institute}</div>
+                        <div className="text-sm text-gray-500">{donation.cause}</div>
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm font-medium text-gray-900">{donation.institute}</div>
-                    <div className="text-sm text-gray-500">{donation.cause}</div>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-gray-900">{donation.amount}</div>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-500">{donation.date}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       {getStatusIcon(donation.status)}
-                      <span className="ml-2 text-sm text-gray-900">{getStatusText(donation.status)}</span>
+                      <span className="ml-2 text-sm text-gray-500">{getStatusText(donation.status)}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm text-gray-900">{donation.impact}</div>
-                  </td>
-                  <td className="px-6 py-4 text-right text-sm font-medium">
-                    {donation.taxReceipt && (
-                      <button onClick={() => handleGenerateReceipt(donation)} className="text-rose-600 hover:text-rose-800 flex items-center justify-end space-x-1">
-                        <Download size={16} />
-                        <span>Receipt</span>
-                      </button>
-                    )}
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button 
+                      onClick={() => handleGenerateReceipt(donation)}
+                      className="text-indigo-600 hover:text-indigo-900 flex items-center justify-end gap-1 ml-auto"
+                    >
+                      <Download size={16} />
+                      Receipt
+                    </button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        )}
       </div>
     </div>
   );

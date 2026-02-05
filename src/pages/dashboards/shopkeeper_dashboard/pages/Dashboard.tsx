@@ -1,8 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { fetchOrders } from '../store/slices/ordersSlice';
 import { navigate } from '../store/slices/navigationSlice';
+import { config } from '../../../../config/env';
 import { 
   ShoppingBag, TrendingUp, DollarSign, Star, 
   Package, Clock, CheckCircle, Calendar, RefreshCcw, Filter 
@@ -17,22 +18,49 @@ import type { AppDispatch } from '../store';
 const Dashboard = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { orders, loading } = useSelector((state: RootState) => state.orders);
+  const { user } = useSelector((state: RootState) => state.auth);
   
+  const [shopStats, setShopStats] = useState({
+    totalOrders: 0,
+    pendingOrders: 0,
+    totalEarnings: 0
+  });
+
   useEffect(() => {
     dispatch(fetchOrders());
   }, [dispatch]);
 
+  useEffect(() => {
+    const fetchStats = async () => {
+        const shopId = user?.shopId || (user?.publicMetadata as any)?.shopId;
+        if (shopId) {
+            try {
+                const res = await fetch(`${config.apiBaseUrl}/api/shops/${shopId}/stats`);
+                const data = await res.json();
+                if (data.success) {
+                    setShopStats(data.stats);
+                }
+            } catch (err) {
+                console.error("Failed to fetch shop stats", err);
+            }
+        }
+    };
+    if (user) {
+        fetchStats();
+    }
+  }, [user]);
+
   const stats = [
     {
       title: 'Total Donations',
-      value: orders.length,
+      value: shopStats.totalOrders || orders.length,
       icon: <ShoppingBag className="text-purple-500" size={24} />,
       color: 'purple',
       change: { value: 12, isPositive: true }
     },
     {
       title: 'Total Impact',
-      value: `${orders.length * 10}+`,
+      value: `${(shopStats.totalOrders || orders.length) * 10}+`,
       subtitle: 'Lives Touched',
       icon: <Star className="text-purple-400" size={24} />,
       color: 'purple',
@@ -40,7 +68,7 @@ const Dashboard = () => {
     },
     {
       title: 'Earnings',
-      value: `$${orders.reduce((sum, order) => sum + order.totalAmount, 0).toFixed(2)}`,
+      value: `$${(shopStats.totalEarnings || 0).toFixed(2)}`,
       icon: <DollarSign className="text-purple-600" size={24} />,
       color: 'purple',
       change: { value: 5, isPositive: true }
@@ -57,7 +85,7 @@ const Dashboard = () => {
   const orderStatus = [
     {
       title: 'Pending Orders',
-      count: orders.filter(order => order.status === 'pending').length,
+      count: shopStats.pendingOrders,
       icon: <Clock className="text-purple-300" size={32} />,
       color: 'purple-300',
       description: 'Awaiting processing',
@@ -136,8 +164,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Quick Stats Summary */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mt-6">
           <div className="bg-white/60 backdrop-blur-sm rounded-lg p-3 border border-purple-100">
             <p className="text-sm text-purple-600">Today's Donations</p>
             <p className="text-xl font-semibold text-purple-900 mt-1">
@@ -147,7 +174,7 @@ const Dashboard = () => {
           <div className="bg-white/60 backdrop-blur-sm rounded-lg p-3 border border-purple-100">
             <p className="text-sm text-purple-600">Pending Review</p>
             <p className="text-xl font-semibold text-purple-900 mt-1">
-              {orders.filter(o => o.status === 'pending').length}
+              {shopStats.pendingOrders}
             </p>
           </div>
           <div className="bg-white/60 backdrop-blur-sm rounded-lg p-3 border border-purple-100">
@@ -157,7 +184,7 @@ const Dashboard = () => {
           <div className="bg-white/60 backdrop-blur-sm rounded-lg p-3 border border-purple-100">
             <p className="text-sm text-purple-600">Total Value</p>
             <p className="text-xl font-semibold text-purple-900 mt-1">
-              ${orders.reduce((sum, order) => sum + order.totalAmount, 0).toFixed(2)}
+              ₹{(shopStats.totalEarnings || 0).toLocaleString()}
             </p>
           </div>
         </div>
@@ -248,7 +275,7 @@ const Dashboard = () => {
                       View All Orders
                     </button>
                   </div>
-                  <div className="h-[calc(100%-4rem)] overflow-auto 
+                  <div className="max-h-[60vh] lg:h-[calc(100%-4rem)] overflow-auto 
                     scrollbar-thin scrollbar-thumb-purple-400 scrollbar-track-purple-100/50
                     pr-2"
                   >

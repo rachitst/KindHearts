@@ -33,6 +33,7 @@ app.use("/api/feedback", require("./routes/feedbackRoutes"));
 app.use("/api/recurring-donations", require("./routes/recurringDonationRoutes"));
 app.use("/api/donors", require("./routes/donorRoutes"));
 app.use("/api/search", require("./routes/searchRoutes"));
+app.use("/api/dashboard", require("./routes/dashboardRoutes"));
 
 
 app.get("/", (req, res) => {

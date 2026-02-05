@@ -71,20 +71,39 @@ const HomePage: React.FC<HomePageProps> = ({ setActiveTab }) => {
     setActiveTab('donations');
   };
 
-  // Sample data
+  const [dashboardStats, setDashboardStats] = useState({
+    totalDonations: 0,
+    activeInstitutes: 0,
+    impactCount: 0
+  });
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const res = await axios.get(`${config.apiBaseUrl}/api/dashboard/stats`);
+        if (res.data.success) {
+          setDashboardStats(res.data.stats);
+        }
+      } catch (error) {
+        console.error("Error fetching dashboard stats:", error);
+      }
+    };
+    fetchStats();
+  }, []);
+
   const stats = [
     { 
       id: 1, 
       title: 'Total Donations', 
-      value: '₹2,450', 
+      value: `₹${dashboardStats.totalDonations.toLocaleString()}`, 
       change: '+12.5%', 
       icon: <DollarSign size={24} />,
       color: 'indigo'
     },
     { 
       id: 2, 
-      title: 'Items Donated', 
-      value: '38', 
+      title: 'Active Institutes', 
+      value: dashboardStats.activeInstitutes.toString(), 
       change: '+7.2%', 
       icon: <Package size={24} />,
       color: 'gold'
@@ -100,7 +119,7 @@ const HomePage: React.FC<HomePageProps> = ({ setActiveTab }) => {
     { 
       id: 4, 
       title: 'People Impacted', 
-      value: '120+', 
+      value: `${dashboardStats.impactCount}+`, 
       change: '+25', 
       icon: <Users size={24} />,
       color: 'emerald'
@@ -171,7 +190,7 @@ const HomePage: React.FC<HomePageProps> = ({ setActiveTab }) => {
                 Welcome back, {user?.firstName || 'Friend'}!
               </h2>
               <p className="opacity-90 mb-4 sm:mb-6 text-base sm:text-lg">
-                Your generosity has impacted 120+ lives this month.
+                Your generosity has impacted {dashboardStats.impactCount}+ lives this month.
               </p>
             </div>
           </div>

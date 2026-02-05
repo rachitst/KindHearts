@@ -374,110 +374,43 @@ const BrowseDonate = () => {
     if (!selectedCategory && selectedItems.length === 0) return;
     setIsLoading(true);
     try {
-      // POST to API
-      const res = await axios.post(`${config.apiBaseUrl}/api/recommendations`, {
-        category: selectedCategory,
-        items: selectedItems,
-        donorName,
+      // Construct natural language query from selection
+      const query = `I want to donate to ${selectedCategory} causes, specifically ${selectedItems.join(", ")}.`;
+
+      // POST to Semantic Search API
+      const res = await axios.post(`${config.apiBaseUrl}/api/search/semantic`, {
+        query: query
       });
 
       const data = res.data;
-      let matched: any[] = [];
-      if (data && data.success) {
-        matched = Array.isArray(data.matchedInstitutes)
-          ? data.matchedInstitutes
-          : [];
+      let matched: RecommendedInstitute[] = [];
+      
+      if (data && data.success && Array.isArray(data.results)) {
+        matched = data.results.map((inst: any) => ({
+          _id: inst._id,
+          name: inst.name || "Unknown",
+          email: inst.email || "",
+          phone: inst.phone || "",
+          address: inst.deliveryAddress || inst.address || "",
+          description: inst.description || "",
+          requirement: inst.tags && inst.tags.length > 0 ? inst.tags : (inst.itemName ? [inst.itemName] : []),
+          category: inst.category || "General",
+          itemName: inst.itemName,
+          quantity: inst.quantity,
+          urgency: inst.urgency,
+          beneficiaryCount: inst.beneficiaryCount,
+          previousDonations: !!inst.previousDonations,
+          createdAt: inst.createdAt,
+        }));
       }
 
-      const normalizeCategory = (c?: string) =>
-        (c || "").toLowerCase().trim();
-      const targetCategory = normalizeCategory(selectedCategory);
-      const itemsLower = selectedItems.map((i) => i.toLowerCase());
-
-      const mapInstitute = (inst: any): RecommendedInstitute => ({
-        _id: inst._id,
-        name: inst.name || "Unknown",
-        email: inst.email || "",
-        phone: inst.phone || "",
-        address: inst.deliveryAddress || inst.address || "",
-        description: inst.description || "",
-        requirement: inst.itemName ? [inst.itemName] : [],
-        category: inst.category || "General",
-        itemName: inst.itemName,
-        quantity: inst.quantity,
-        urgency: inst.urgency,
-        beneficiaryCount: inst.beneficiaryCount,
-        previousDonations: !!inst.previousDonations,
-        createdAt: inst.createdAt,
-      });
-
-      const candidateMap = new Map<string, RecommendedInstitute>();
-      matched.forEach((m) => {
-        const mapped = mapInstitute(m);
-        if (mapped._id) candidateMap.set(mapped._id, mapped);
-      });
-      allInstitutes.forEach((a) => {
-        if (a._id && !candidateMap.has(a._id)) {
-          candidateMap.set(a._id, a);
-        }
-      });
-
-      const urgencyWeight = (u?: string) => {
-        const v = (u || "").toLowerCase();
-        if (v === "critical") return 1;
-        if (v === "high") return 0.8;
-        if (v === "medium") return 0.5;
-        if (v === "low") return 0.2;
-        return 0.3;
-      };
-      const containsAny = (text?: string) => {
-        const t = (text || "").toLowerCase();
-        return itemsLower.some((i) => t.includes(i)) ? 1 : 0;
-      };
-
-      const scored = Array.from(candidateMap.values())
-        .map((inst) => {
-          const catMatch =
-            targetCategory === "" ||
-            targetCategory === "all" ||
-            normalizeCategory(inst.category) === targetCategory
-              ? 1
-              : 0;
-          const itemMatch =
-            containsAny(inst.itemName) ||
-            containsAny(inst.description) ||
-            containsAny((inst.requirement || []).join(", "));
-          const score =
-            0.5 * catMatch +
-            0.3 * itemMatch +
-            0.2 * urgencyWeight(inst.urgency) +
-            (inst.previousDonations ? 0.1 : 0);
-          return { inst, score };
-        })
-        .filter((s) => s.score > 0.25)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 6)
-        .map((s) => s.inst);
-
-      if (scored.length === 0) {
-        const relaxed = Array.from(candidateMap.values())
-          .map((inst) => {
-            const itemMatch =
-              containsAny(inst.itemName) ||
-              containsAny(inst.description) ||
-              containsAny((inst.requirement || []).join(", "));
-            const score = 0.6 * itemMatch + 0.4 * urgencyWeight(inst.urgency);
-            return { inst, score };
-          })
-          .filter((s) => s.score > 0.1)
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 6)
-          .map((s) => s.inst);
-        setRecommendedInfoMessage("No strong matches; showing closest alternatives");
-        setRecommendedInstitutes(relaxed);
+      if (matched.length === 0) {
+        setRecommendedInfoMessage("No direct matches found, but here are some active institutes.");
+        // Fallback or empty state could be handled here
+        setRecommendedInstitutes([]); 
       } else {
         setRecommendedInfoMessage(null);
-        setRecommendedInstitutes(scored);
+        setRecommendedInstitutes(matched);
       }
       setShowDonationPrompt(false);
     } catch (error) {
@@ -786,10 +719,26 @@ const BrowseDonate = () => {
             <h3 className="text-xl font-semibold text-white mb-2">
               {institute.name}
             </h3>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-white/20 text-white">
                 {institute.category || "General"}
               </span>
+              {institute.urgency && (
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white ${
+                  institute.urgency.toLowerCase() === 'critical' ? 'bg-red-500' :
+                  institute.urgency.toLowerCase() === 'high' ? 'bg-orange-500' :
+                  institute.urgency.toLowerCase() === 'medium' ? 'bg-yellow-500' :
+                  'bg-blue-500'
+                }`}>
+                  {institute.urgency}
+                </span>
+              )}
+              {/* Medical Tag */}
+              {(institute.category?.toLowerCase() === 'medical' || institute.requirement?.some(r => r.toLowerCase().includes('medic'))) && (
+                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-500 text-white">
+                    Medical
+                 </span>
+              )}
               {institute.previousDonations && (
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-white">
                   Previous Donor
@@ -865,6 +814,11 @@ const BrowseDonate = () => {
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-white/20 text-white">
                 {institute.category || "General"}
               </span>
+              {(institute.category?.toLowerCase() === 'medical' || institute.requirement?.some(r => r.toLowerCase().includes('medic'))) && (
+                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-500 text-white">
+                    Medical
+                 </span>
+              )}
               {institute.previousDonations && (
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-white">
                   Previous Donor

@@ -1,4 +1,6 @@
 const Shop = require("../models/Shop");
+const Order = require("../models/Order");
+const mongoose = require("mongoose");
 
 const createShop = async (req, res) => {
   try {
@@ -12,13 +14,6 @@ const createShop = async (req, res) => {
     if (shop) {
         return res.status(200).json({ success: true, shop, message: "Shop already exists" });
     }
-
-    // shop = new Shop({ name, location, owner, email, phone });
-    // Assuming location comes as { lat, lng } or similar from frontend, 
-    // but for now we might need to default it or parse it.
-    // Since the frontend probably sends a string address, we need to geocode it.
-    // For this task, we will just use a default or expect coordinates if provided.
-    // If location is a string (address), we put it in address and mock coordinates or expect them.
     
     // Simplification: Require coordinates in body or default to [0,0]
     const coordinates = req.body.coordinates || [0, 0]; 
@@ -60,4 +55,55 @@ const getShops = async (req, res) => {
   }
 };
 
-module.exports = { createShop, getShops };
+const getShopStats = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ success: false, message: "Invalid shop id" });
+    }
+    const shopObjectId = new mongoose.Types.ObjectId(id);
+    
+    // 1. Total Orders
+    const totalOrders = await Order.countDocuments({ shop: shopObjectId });
+
+    // 2. Pending Orders (Ready or In Progress)
+    // Mapping user's "Ready or In Progress" to enum: ["pending", "accepted", "packaging", "ready"]
+    const pendingOrders = await Order.countDocuments({ 
+      shop: shopObjectId, 
+      status: { $in: ["pending", "accepted", "packaging", "ready"] } 
+    });
+
+    // 3. Total Earnings (Sum of price of 'Delivered' orders)
+    // Status 'completed' corresponds to 'Delivered' in our schema enum check
+    const earningsAgg = await Order.aggregate([
+      { 
+        $match: { 
+          shop: shopObjectId, 
+          status: { $in: ["completed", "delivered"] } 
+        } 
+      },
+      { 
+        $group: { 
+          _id: null, 
+          total: { $sum: "$totalAmount" } 
+        } 
+      }
+    ]);
+    const totalEarnings = earningsAgg[0]?.total || 0;
+
+    res.json({
+      success: true,
+      stats: {
+        totalOrders,
+        pendingOrders,
+        totalEarnings
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching shop stats:", error);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+module.exports = { createShop, getShops, getShopStats };

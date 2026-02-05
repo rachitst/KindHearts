@@ -52,29 +52,19 @@ const RecentDonations: React.FC<RecentDonationsProps> = ({ orders }) => {
   const validOrders = orders?.filter(order => order && order.id) || [];
 
   return (
-    <div className="space-y-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
       {validOrders.map((order) => (
         <div
           key={order.id}
-          className="bg-white rounded-lg p-4 border border-purple-100 
-          hover:border-purple-200 transition-all duration-200 
-          shadow-sm hover:shadow group"
+          className="bg-white rounded-lg p-4 border border-purple-100 hover:border-purple-200 transition-all duration-200 shadow-sm hover:shadow group"
         >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="flex-shrink-0">
-                <span className="inline-flex items-center justify-center h-8 w-auto px-3
-                  bg-gradient-to-r from-purple-100 to-purple-50
-                  text-purple-700 text-sm font-medium rounded-md
-                  border border-purple-200 shadow-sm"
-                >
-                  #{order.id?.slice(0, 8) || 'N/A'}
-                </span>
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-gray-900 group-hover:text-purple-700 
-                  transition-colors duration-200"
-                >
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="inline-flex items-center justify-center h-8 px-3 bg-gradient-to-r from-purple-100 to-purple-50 text-purple-700 text-sm font-medium rounded-md border border-purple-200 shadow-sm">
+                #{order.id?.slice(0, 8) || 'N/A'}
+              </span>
+              <div className="min-w-0">
+                <h3 className="text-sm font-medium text-gray-900 group-hover:text-purple-700 transition-colors duration-200 truncate">
                   {order.instituteName || 'Unknown Institute'}
                 </h3>
                 <p className="text-xs text-gray-500">
@@ -82,22 +72,19 @@ const RecentDonations: React.FC<RecentDonationsProps> = ({ orders }) => {
                 </p>
               </div>
             </div>
-            <div className="flex items-center space-x-2">
-              <span className={`
-                inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                ${getStatusColor(order.status)}
-              `}>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
                 {order.status || 'unknown'}
               </span>
-              <span className="text-sm font-medium text-purple-900">
-                ${order.totalAmount?.toFixed(2) || '0.00'}
+              <span className="text-sm font-semibold text-purple-900">
+                ₹{(order.totalAmount || 0).toLocaleString()}
               </span>
             </div>
           </div>
         </div>
       ))}
       {validOrders.length === 0 && (
-        <div className="text-center py-8 text-gray-500">
+        <div className="col-span-full text-center py-8 text-gray-500">
           No orders available
         </div>
       )}

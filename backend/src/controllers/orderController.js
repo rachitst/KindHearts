@@ -1,12 +1,17 @@
 const Order = require("../models/Order");
 const Shop = require("../models/Shop");
+const mongoose = require("mongoose");
 
 exports.placeOrder = async (req, res) => {
   try {
     const { shopId, items, deliveryAddress, contactPerson, contactNumber, paymentStatus, notes } = req.body;
 
+    if (!shopId || !mongoose.Types.ObjectId.isValid(shopId)) {
+      return res.status(400).json({ success: false, message: "Invalid shopId" });
+    }
+
     const shop = await Shop.findById(shopId);
-    if (!shop) return res.status(404).json({ message: "Shop not found" });
+    if (!shop) return res.status(404).json({ success: false, message: "Shop not found" });
 
     const totalAmount = items.reduce(
       (sum, item) => sum + item.price * item.quantity,

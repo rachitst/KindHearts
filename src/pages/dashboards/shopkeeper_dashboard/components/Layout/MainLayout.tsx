@@ -71,11 +71,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         transition-all duration-300 ease-in-out
       `}>
         <Header 
-          title={getPageTitle()}
-          toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
           toggleNotifications={() => setNotificationsPanelOpen(!notificationsPanelOpen)}
-          isMobile={isMobile}
-          sidebarOpen={sidebarOpen}
         />
         
         <main className="flex-1 overflow-auto">
