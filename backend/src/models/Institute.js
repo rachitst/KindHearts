@@ -14,6 +14,9 @@ const InstituteSchema = new mongoose.Schema(
     itemName: { type: String },
     type: { type: String, enum: ["monetary", "resource"], default: "resource" },
     quantity: { type: Number },
+    amountNeeded: { type: Number }, // For monetary requests
+    amountRaised: { type: Number, default: 0 },
+    tags: [{ type: String }], // For semantic search categorization
     urgency: { type: String, enum: ["Low", "Medium", "High", "Critical"] },
     status: { 
       type: String, 

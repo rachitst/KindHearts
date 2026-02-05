@@ -32,6 +32,21 @@ const ShopkeeperPortal = () => {
     agreeToTerms: false
   });
 
+  const [coordinates, setCoordinates] = useState<[number, number] | null>(null);
+
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setCoordinates([position.coords.longitude, position.coords.latitude]);
+        },
+        (error) => {
+          console.error("Error getting location", error);
+        }
+      );
+    }
+  }, []);
+
   useEffect(() => {
     const checkShop = async () => {
         if (isLoaded && user?.primaryEmailAddress?.emailAddress) {
@@ -107,6 +122,7 @@ const ShopkeeperPortal = () => {
         body: JSON.stringify({
           name: formData.shopName,
           location: formData.address,
+          coordinates: coordinates || [0, 0],
           owner: formData.ownerName,
           email: formData.email,
           phone: formData.phone

@@ -31,6 +31,8 @@ app.use("/api/campaigns", require("./routes/campaignRoutes"));
 app.use("/api/impact-stories", require("./routes/impactRoutes"));
 app.use("/api/feedback", require("./routes/feedbackRoutes"));
 app.use("/api/recurring-donations", require("./routes/recurringDonationRoutes"));
+app.use("/api/donors", require("./routes/donorRoutes"));
+app.use("/api/search", require("./routes/searchRoutes"));
 
 
 app.get("/", (req, res) => {

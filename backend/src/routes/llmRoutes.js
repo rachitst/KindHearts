@@ -3,6 +3,7 @@ const rateLimit = require("express-rate-limit");
 const router = express.Router();
 const { getInstituteRecommendations } = require("../utils/llmMatcher");
 const { getInstituteNeeds } = require("../utils/llmInstitute");
+const { fetchDonorHistory, searchRequests } = require("../utils/agentTools");
 const Groq = require("groq-sdk");
 
 const limiter = rateLimit({
@@ -16,10 +17,21 @@ router.use(limiter);
 
 router.post("/chat", async (req, res) => {
   try {
-    const { contents } = req.body;
+    const { contents, donorId } = req.body;
     
     if (!contents || !Array.isArray(contents)) {
         return res.status(400).json({ error: { message: "Invalid contents format" } });
+    }
+
+    // Fetch history
+    let historyText = "No past donations.";
+    if (donorId) {
+        try {
+            const history = await fetchDonorHistory(donorId);
+            if (history && history.length > 0) {
+                 historyText = `User's past donations: ${history.map(d => `${d.donationItem || d.type} (${d.amount})`).join(", ")}`;
+            }
+        } catch (e) { console.error("History fetch error", e); }
     }
 
     // Convert Gemini format to Groq/OpenAI format
@@ -29,16 +41,67 @@ router.post("/chat", async (req, res) => {
     }));
 
     // Add system prompt if needed
-    messages.unshift({ role: "system", content: "You are Sahayak, a helpful donation assistant for KindHearts platform." });
+    messages.unshift({ 
+        role: "system", 
+        content: `You are the KindHearts Donor Advocate. Use the user's donation history and current critical requests to suggest where they can make the most impact. 
+        ${historyText}
+        If they ask for suggestions, call the search tool for "Critical" urgency requests.` 
+    });
 
     const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
     
-    const completion = await groq.chat.completions.create({
+    const tools = [
+        {
+            type: "function",
+            function: {
+                name: "searchRequests",
+                description: "Search for donation requests based on urgency or keywords",
+                parameters: {
+                    type: "object",
+                    properties: {
+                        query: { type: "string", description: "Search query, e.g. 'Critical', 'Food', 'Education'" }
+                    },
+                    required: ["query"]
+                }
+            }
+        }
+    ];
+
+    let completion = await groq.chat.completions.create({
         messages: messages,
-        model: "llama3-8b-8192", 
+        model: process.env.GROQ_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct", 
+        tools: tools,
+        tool_choice: "auto"
     });
 
-    const text = completion.choices[0]?.message?.content || "";
+    let responseMessage = completion.choices[0]?.message;
+
+    // Handle tool calls
+    if (responseMessage?.tool_calls) {
+        messages.push(responseMessage);
+        
+        for (const toolCall of responseMessage.tool_calls) {
+            if (toolCall.function.name === "searchRequests") {
+                const args = JSON.parse(toolCall.function.arguments);
+                const results = await searchRequests(args.query);
+                
+                messages.push({
+                    role: "tool",
+                    tool_call_id: toolCall.id,
+                    content: JSON.stringify(results)
+                });
+            }
+        }
+        
+        // Second call
+        completion = await groq.chat.completions.create({
+            messages: messages,
+            model: process.env.GROQ_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct", 
+        });
+        responseMessage = completion.choices[0]?.message;
+    }
+
+    const text = responseMessage?.content || "";
     
     // Return in Gemini format to minimize frontend changes
     res.json({

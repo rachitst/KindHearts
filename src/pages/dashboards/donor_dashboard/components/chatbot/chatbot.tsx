@@ -4,6 +4,7 @@ import { MessageCircle, X, Send, Bot, HeartHandshake } from 'lucide-react';
 import Chatform from "./Chatform";
 import { trackerinfo } from "./trackerinfo";
 import { config } from "../../../../../config/env";
+import { useUser } from "@clerk/clerk-react";
 import './chatbot.css';
 
 interface ChatMessage {
@@ -27,6 +28,7 @@ interface ApiResponse {
 }
 
 const Chatbot: React.FC = () => {
+  const { user } = useUser();
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([{
     role: "model",
     text: "Namaste! 🙏 I'm Sahayak, your donation assistant. How can I help you today?",
@@ -39,33 +41,31 @@ const Chatbot: React.FC = () => {
       setChatHistory(prev => [...prev.filter(msg => msg.text !== "Thinking...."), { role: "model", text, isError }]);
     };
 
-    const formattedHistory = history.map(({ role, text }) => ({ 
-      role: role === 'model' ? 'assistant' : 'user', 
-      content: text 
+    // Format for backend (Gemini format as expected by llmRoutes.js)
+    const contents = history.map(({ role, text }) => ({ 
+      role: role, 
+      parts: [{ text: text }]
     }));
 
     const requestOptions = {
       method: "POST",
       headers: { 
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${import.meta.env.VITE_GROQ_API_KEY}`
+        // No direct API key needed here, backend handles it
       },
       body: JSON.stringify({ 
-        model: `${import.meta.env.VITE_GROQ_MODEL}`,
-        messages: [
-          { role: "system", content: trackerinfo },
-          ...formattedHistory
-        ]
+        contents: contents,
+        donorId: user?.id 
       }),
     };
 
     try {
-      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", requestOptions);
-      const data = await response.json();
+      const response = await fetch(`${config.apiBaseUrl}/api/llm/chat`, requestOptions);
+      const data: ApiResponse = await response.json();
       
       if (!response.ok) throw new Error(data.error?.message || "Something went wrong!");
       
-      const apiResponseText = data.choices[0].message.content;
+      const apiResponseText = data.candidates[0].content.parts[0].text;
       updateHistory(apiResponseText);
     } catch (error) {
       updateHistory((error as Error).message, true);

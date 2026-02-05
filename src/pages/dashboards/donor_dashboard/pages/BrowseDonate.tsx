@@ -109,6 +109,7 @@ const BrowseDonate = () => {
 
   // Pagination and filtering states for "All Institutes"
   const [allInstitutes, setAllInstitutes] = useState<RecommendedInstitute[]>([]);
+  const [searchResults, setSearchResults] = useState<RecommendedInstitute[] | null>(null);
   const [impactStories, setImpactStories] = useState<any[]>([]);
   const [pageIndex, setPageIndex] = useState(0);
   const [pageSize, setPageSize] = useState(6);
@@ -127,8 +128,45 @@ const BrowseDonate = () => {
     { id: "environment", name: "Environment" },
   ];
 
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(async () => {
+      if (searchQuery.trim()) {
+        try {
+          const res = await axios.post(`${config.apiBaseUrl}/api/search/semantic`, {
+            query: searchQuery
+          });
+          if (res.data.success && Array.isArray(res.data.results)) {
+             const mapped: RecommendedInstitute[] = res.data.results.map((inst: any) => ({
+                _id: inst._id,
+                name: inst.name || "Unknown",
+                email: inst.email || "",
+                phone: inst.phone || "",
+                address: inst.deliveryAddress || inst.address || "",
+                description: inst.description || "",
+                requirement: inst.itemName ? [inst.itemName] : [],
+                category: inst.category || "General",
+                itemName: inst.itemName,
+                quantity: inst.quantity,
+                urgency: inst.urgency,
+                beneficiaryCount: inst.beneficiaryCount,
+                previousDonations: !!inst.previousDonations,
+                createdAt: inst.createdAt,
+              }));
+             setSearchResults(mapped);
+          }
+        } catch (e) {
+          console.error("Search error:", e);
+        }
+      } else {
+        setSearchResults(null);
+      }
+    }, 500);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
+
   const displayedAllInstitutes = useMemo(() => {
-    let result = [...allInstitutes];
+    let result = searchResults !== null ? [...searchResults] : [...allInstitutes];
 
     // 1. Filter by Category
     if (activeCategory !== "all") {
@@ -138,16 +176,9 @@ const BrowseDonate = () => {
       );
     }
 
-    // 2. Filter by Search Query
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (inst) =>
-          inst.name.toLowerCase().includes(q) ||
-          inst.description.toLowerCase().includes(q) ||
-          inst.address.toLowerCase().includes(q)
-      );
-    }
+    // 2. Filter by Search Query - Removed client-side filter in favor of semantic search
+    // But if we want to filter the *results* further (e.g. strict matching), we could.
+    // For now, we rely on the API.
 
     // 3. (Optional) Filter by Recommendation Criteria
     if (showFilteredAll) {

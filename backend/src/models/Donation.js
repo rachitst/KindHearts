@@ -7,6 +7,11 @@ const DonationSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    donorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: false, // Optional for now to support anonymous/existing data
+    },
     amount: {
       type: Number,
       required: true,
