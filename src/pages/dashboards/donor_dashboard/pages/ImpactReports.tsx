@@ -283,10 +283,19 @@ const ImpactReports = () => {
 
       {/* 3. Narrative Timeline */}
       <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
-          <h3 className="text-xl font-bold text-gray-900 mb-8 flex items-center gap-2">
-              <Calendar size={20} className="text-indigo-600" />
-              Your Journey of Kindness
-          </h3>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+            <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <Calendar size={20} className="text-indigo-600" />
+                Your Journey of Kindness
+            </h3>
+            <button 
+                onClick={downloadExcel}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-indigo-600 rounded-xl transition-all text-sm font-medium shadow-sm"
+            >
+                <FileSpreadsheet size={16} />
+                Download Report
+            </button>
+          </div>
           
           <div className="relative">
               {/* Vertical Line */}
