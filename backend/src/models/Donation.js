@@ -29,6 +29,10 @@ const DonationSchema = new mongoose.Schema(
       enum: ["donation", "withdrawal", "monetary", "resource"], // Added monetary and resource
       default: "donation",
     },
+    assignedShopId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Shop'
+    },
     status: {
       type: String,
       enum: ["completed", "pending", "failed"],

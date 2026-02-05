@@ -6,6 +6,16 @@ const InstituteSchema = new mongoose.Schema(
     email: { type: String },
     phone: { type: String },
     address: { type: String },
+    location: {
+      type: {
+        type: String,
+        enum: ["Point"],
+        default: "Point",
+      },
+      coordinates: {
+        type: [Number], // [longitude, latitude]
+      },
+    },
     description: { type: String },
     image: { type: String },
 

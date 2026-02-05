@@ -46,6 +46,44 @@ Our ecosystem connects four key pillars:
 
 ---
 
+## 🤖 AI Agents & Smart Features
+
+KindHearts employs a Multi-Agent System (MAS) to orchestrate the donation lifecycle intelligently:
+
+### 1. 🦸‍♂️ Donor Advocate (Sahayak)
+*   **Role**: Acts as a personal guide for donors.
+*   **Tech**: Groq API (Llama-3).
+*   **Function**: 
+    *   Analyzes donor history to suggest relevant causes (e.g., "You donated books last time; here's a school needing desks").
+    *   Answers FAQs and guides users to the donation flow.
+    *   **Safeguard**: Strictly non-transactional; directs users to secure UI for payments.
+
+### 2. 🔍 Active Discovery Agent
+*   **Role**: Semantic Search Engine.
+*   **Tech**: LLM-based Intent Extraction + Weighted Scoring.
+*   **Function**:
+    *   Understands natural language queries (e.g., "help kids with hunger" -> Category: Food, Urgency: High).
+    *   Prioritizes "Critical" urgency requests.
+    *   Filters irrelevant results (e.g., won't show books for a food search).
+
+### 3. ⚖️ Fairness Agent
+*   **Role**: Shopkeeper Assignment Engine.
+*   **Tech**: Geo-spatial Querying + Fairness Algorithms.
+*   **Function**:
+    *   Automatically assigns the best local shopkeeper to a request.
+    *   **Rotation Logic**: Prioritizes shops that haven't received an order recently to ensure equitable income distribution.
+    *   Prevents monopolies and ensures faster delivery by selecting nearby vendors.
+
+### 4. 📜 Impact Story Agent
+*   **Role**: Automated Report Generator.
+*   **Tech**: LLM Summarization.
+*   **Function**:
+    *   Aggregates a donor's contribution history.
+    *   Generates personalized, emotional impact stories (e.g., "Your contributions provided 500 meals and 20 textbooks...").
+    *   Creates downloadable Excel reports for transparency.
+
+---
+
 ## 🛠️ Tech Stack
 
 **Frontend:**
